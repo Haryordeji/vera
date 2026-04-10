@@ -3,6 +3,53 @@
 ---
 
 ## 2026-04-10
+### Entry #5 — Phase 5: Patient Management & Session Creation
+
+Full patient CRUD + session routes on the backend, and real data-driven frontend pages. 87 total tests passing (54 server + 33 web).
+
+**Backend routes (`packages/server/src/routes/`):**
+- `patients.ts` — POST (create, validates fullName), GET (search by name/MRN, case-insensitive), GET /:id (404 if not found), PUT /:id (partial update)
+- `sessions.ts` — POST (requires patientId, creates session + SESSION_CREATED audit event in `$transaction`), GET (physician-scoped, optional `?status=` filter), GET /:id (full includes: patient, physician, transcript, soapNote, auditEvents asc)
+- `src/lib/getPhysician.ts` — helper used by session routes to look up Physician by Clerk ID
+
+**Frontend pages (`packages/web/src/pages/`):**
+- `NewVisitPage.tsx` — debounced patient search (300ms, GET /api/patients?search=), dropdown results, inline patient creation form (fullName required, MRN + DOB optional), "Start Visit" → POST /api/sessions → navigate to /visits/:id
+- `DashboardPage.tsx` — real session data (GET /api/sessions), stat cards (this week / pending review / completed), VisitCard list (5 most recent), empty state CTA
+- `PastVisitsPage.tsx` — full session list with client-side search (patient name + MRN) and status filter buttons (All / Recording / In Review / Completed)
+
+**Frontend components (`packages/web/src/components/visit/`):**
+- `StatusBadge.tsx` — color-coded badge (blue=RECORDING, amber=TRANSCRIBING, purple=GENERATING_NOTE, orange=IN_REVIEW, green=COMPLETED). `data-testid="status-badge"` + `data-status` attrs.
+- `VisitCard.tsx` — clickable card → /visits/:id. Shows patient name, formatted date, StatusBadge. Falls back to "Unknown Patient".
+- `src/lib/types.ts` — shared TypeScript interfaces: Patient, Session, SessionStatus, WorkflowStatus, Transcript, SoapNote, AuditEvent, Physician
+
+**Tests:**
+- `packages/server/src/__tests__/patients.test.ts` — 15 tests: CRUD, search (name, MRN, case-insensitive), empty results, 400/404 errors
+- `packages/server/src/__tests__/sessions.test.ts` — 15 tests: create + audit event, invalid inputs, no physician profile, list (ordering, status filter, isolation), get (full relations, audit ordering, 404, 403)
+- `packages/web/src/__tests__/components.test.tsx` — 15 tests: StatusBadge (5 statuses, color classes, data attrs, className prop), VisitCard (patient name, date, status badge, unknown patient fallback, aria-label)
+- `packages/web/src/__tests__/routing.test.tsx` — 18 tests (all async with `await act(async () => {})`)
+
+**Key bugs fixed:**
+- `useApi()` mock causing infinite re-render loop in tests: mock returned new function references on each call → `useEffect([get])` re-fired every render → `setSessions([])` triggered re-render with new `[]` reference → repeat. Fixed with `vi.hoisted()` to create stable mock function references shared across all renders.
+- Routing tests hanging: never-resolving promise mocks kept the event loop alive; `Promise.resolve([])` + stable refs + async act() is the correct pattern.
+
+**Key files:**
+- `packages/server/src/routes/patients.ts`
+- `packages/server/src/routes/sessions.ts`
+- `packages/server/src/__tests__/patients.test.ts`
+- `packages/server/src/__tests__/sessions.test.ts`
+- `packages/web/src/lib/types.ts`
+- `packages/web/src/lib/api.ts`
+- `packages/web/src/pages/NewVisitPage.tsx`
+- `packages/web/src/pages/DashboardPage.tsx`
+- `packages/web/src/pages/PastVisitsPage.tsx`
+- `packages/web/src/components/visit/StatusBadge.tsx`
+- `packages/web/src/components/visit/VisitCard.tsx`
+- `packages/web/src/__tests__/components.test.tsx`
+- `packages/web/src/__tests__/routing.test.tsx`
+
+---
+
+## 2026-04-10
 ### Entry #4 — Phase 4: Frontend Shell & Navigation
 
 Built full app layout, routing, and placeholder pages. 42 total tests passing (18 new web tests).

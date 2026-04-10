@@ -1,7 +1,25 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
+
+// ---------------------------------------------------------------------------
+// Mock useApi — stable function references via vi.hoisted() so the
+// useEffect([get]) dep never changes between renders (prevents infinite loops).
+// ---------------------------------------------------------------------------
+const { mockGet, mockPost, mockPut } = vi.hoisted(() => ({
+  mockGet: vi.fn().mockResolvedValue([]),
+  mockPost: vi.fn().mockResolvedValue(null),
+  mockPut: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("@/lib/api", () => ({
+  useApi: () => ({
+    get: mockGet,
+    post: mockPost,
+    put: mockPut,
+  }),
+}));
 
 // ---------------------------------------------------------------------------
 // Mock Clerk — tests run without a real Clerk instance
@@ -14,7 +32,7 @@ vi.mock("@clerk/clerk-react", () => ({
   SignIn: () => <div>Sign In</div>,
   SignUp: () => <div>Sign Up</div>,
   UserButton: () => <button data-testid="user-button">User</button>,
-  useUser: () => ({ isLoaded: true, isSignedIn: true }),
+  useUser: () => ({ isLoaded: true, isSignedIn: true, user: null }),
   useAuth: () => ({ getToken: () => Promise.resolve("test-token") }),
 }));
 
@@ -31,43 +49,45 @@ import SettingsPage from "../pages/SettingsPage";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Sidebar } from "../components/layout/Sidebar";
 
-// Helper: render a component at a specific route
-function renderAt(element: React.ReactElement, initialPath = "/") {
-  return render(
-    <MemoryRouter initialEntries={[initialPath]}>{element}</MemoryRouter>
-  );
+// Helper: render a component at a specific route, flushing all async effects
+async function renderAt(element: React.ReactElement, initialPath = "/") {
+  await act(async () => {
+    render(
+      <MemoryRouter initialEntries={[initialPath]}>{element}</MemoryRouter>
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
 // Page rendering — each route shows the correct page
 // ---------------------------------------------------------------------------
 describe("Page components render", () => {
-  it("DashboardPage shows welcome heading and CTA", () => {
-    renderAt(<DashboardPage />);
+  it("DashboardPage shows welcome heading and CTA", async () => {
+    await renderAt(<DashboardPage />);
     expect(screen.getByText("Good morning")).toBeInTheDocument();
-    // "Start New Visit" appears in sidebar + page body — both are correct
-    expect(screen.getAllByText("Start New Visit").length).toBeGreaterThanOrEqual(2);
+    // Sidebar always shows "Start New Visit"; body CTA shows when no sessions
+    expect(screen.getAllByText("Start New Visit").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("NewVisitPage shows heading", () => {
-    renderAt(<NewVisitPage />);
+  it("NewVisitPage shows heading", async () => {
+    await renderAt(<NewVisitPage />);
     // level:2 distinguishes the page <h2> from the AppLayout top-bar <h1>
     expect(screen.getByRole("heading", { level: 2, name: /new visit/i })).toBeInTheDocument();
   });
 
-  it("ActiveVisitPage shows the visit id from URL param", () => {
-    renderAt(<ActiveVisitPage />, "/visits/abc-123");
+  it("ActiveVisitPage shows the visit id from URL param", async () => {
+    await renderAt(<ActiveVisitPage />, "/visits/abc-123");
     expect(screen.getByText("Active Visit")).toBeInTheDocument();
   });
 
-  it("PastVisitsPage shows heading and empty state", () => {
-    renderAt(<PastVisitsPage />);
+  it("PastVisitsPage shows heading and empty state", async () => {
+    await renderAt(<PastVisitsPage />);
     expect(screen.getByRole("heading", { level: 2, name: /past visits/i })).toBeInTheDocument();
-    expect(screen.getByText("No past visits")).toBeInTheDocument();
+    expect(screen.getByText("No visits yet")).toBeInTheDocument();
   });
 
-  it("SettingsPage shows heading and profile section", () => {
-    renderAt(<SettingsPage />);
+  it("SettingsPage shows heading and profile section", async () => {
+    await renderAt(<SettingsPage />);
     expect(screen.getByRole("heading", { level: 2, name: /^settings$/i })).toBeInTheDocument();
     expect(screen.getByText("Physician Profile")).toBeInTheDocument();
   });
@@ -77,8 +97,8 @@ describe("Page components render", () => {
 // Layout — AppLayout renders all three structural areas
 // ---------------------------------------------------------------------------
 describe("AppLayout structure", () => {
-  it("renders sidebar, main content, and page title", () => {
-    renderAt(
+  it("renders sidebar, main content, and page title", async () => {
+    await renderAt(
       <AppLayout title="Test Page">
         <p>Main content here</p>
       </AppLayout>
@@ -89,8 +109,8 @@ describe("AppLayout structure", () => {
     expect(screen.getAllByText("Vera").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("does not render right panel toggle when no rightPanel prop", () => {
-    renderAt(
+  it("does not render right panel toggle when no rightPanel prop", async () => {
+    await renderAt(
       <AppLayout title="No Panel">
         <p>content</p>
       </AppLayout>
@@ -98,8 +118,8 @@ describe("AppLayout structure", () => {
     expect(screen.queryByLabelText("Toggle audit panel")).not.toBeInTheDocument();
   });
 
-  it("renders right panel toggle and panel when rightPanel prop is provided", () => {
-    renderAt(
+  it("renders right panel toggle and panel when rightPanel prop is provided", async () => {
+    await renderAt(
       <AppLayout title="With Panel" rightPanel={<p>Audit content</p>}>
         <p>Main content</p>
       </AppLayout>
@@ -111,7 +131,7 @@ describe("AppLayout structure", () => {
 
   it("right panel can be toggled closed", async () => {
     const user = userEvent.setup();
-    renderAt(
+    await renderAt(
       <AppLayout title="Toggle Test" rightPanel={<p>Panel body</p>}>
         <p>main</p>
       </AppLayout>
@@ -128,45 +148,41 @@ describe("AppLayout structure", () => {
 // Sidebar navigation
 // ---------------------------------------------------------------------------
 describe("Sidebar navigation", () => {
-  it("renders all nav links", () => {
-    renderAt(<Sidebar />);
+  it("renders all nav links", async () => {
+    await renderAt(<Sidebar />);
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Past Visits")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
-  it("renders the Start New Visit button", () => {
-    renderAt(<Sidebar />);
+  it("renders the Start New Visit button", async () => {
+    await renderAt(<Sidebar />);
     expect(screen.getByText("Start New Visit")).toBeInTheDocument();
   });
 
-  it("Dashboard link has correct href", () => {
-    renderAt(<Sidebar />);
+  it("Dashboard link has correct href", async () => {
+    await renderAt(<Sidebar />);
     const link = screen.getByRole("link", { name: /dashboard/i });
     expect(link).toHaveAttribute("href", "/");
   });
 
-  it("Past Visits link has correct href", () => {
-    renderAt(<Sidebar />);
+  it("Past Visits link has correct href", async () => {
+    await renderAt(<Sidebar />);
     const link = screen.getByRole("link", { name: /past visits/i });
     expect(link).toHaveAttribute("href", "/visits");
   });
 
-  it("Settings link has correct href", () => {
-    renderAt(<Sidebar />);
+  it("Settings link has correct href", async () => {
+    await renderAt(<Sidebar />);
     const link = screen.getByRole("link", { name: /settings/i });
     expect(link).toHaveAttribute("href", "/settings");
   });
 
   it("Start New Visit button navigates to /visits/new", async () => {
     const user = userEvent.setup();
-    let capturedPath = "";
-
-    // Render with a route that captures navigation
     const { container } = render(
       <MemoryRouter initialEntries={["/"]}>
         <Sidebar />
-        {/* Capture the active route via a test outlet */}
       </MemoryRouter>
     );
 
@@ -175,7 +191,7 @@ describe("Sidebar navigation", () => {
     // Navigation happened — no error thrown is sufficient since MemoryRouter
     // doesn't crash on unknown routes, just silently updates
     expect(btn).toBeInTheDocument();
-    void container; void capturedPath; // suppress unused warnings
+    void container; // suppress unused warning
   });
 });
 
@@ -183,20 +199,20 @@ describe("Sidebar navigation", () => {
 // ActiveVisitPage — right panel (audit history) is present
 // ---------------------------------------------------------------------------
 describe("ActiveVisitPage layout", () => {
-  it("renders the audit panel toggle", () => {
-    renderAt(<ActiveVisitPage />, "/visits/test-id");
+  it("renders the audit panel toggle", async () => {
+    await renderAt(<ActiveVisitPage />, "/visits/test-id");
     expect(screen.getByLabelText("Toggle audit panel")).toBeInTheDocument();
   });
 
-  it("renders the Audit & Version History panel header", () => {
-    renderAt(<ActiveVisitPage />, "/visits/test-id");
+  it("renders the Audit & Version History panel header", async () => {
+    await renderAt(<ActiveVisitPage />, "/visits/test-id");
     expect(
       screen.getByText("Audit & Version History")
     ).toBeInTheDocument();
   });
 
-  it("renders all SOAP section labels", () => {
-    renderAt(<ActiveVisitPage />, "/visits/test-id");
+  it("renders all SOAP section labels", async () => {
+    await renderAt(<ActiveVisitPage />, "/visits/test-id");
     expect(screen.getByText("Subjective")).toBeInTheDocument();
     expect(screen.getByText("Objective")).toBeInTheDocument();
     expect(screen.getByText("Assessment")).toBeInTheDocument();
