@@ -3,6 +3,48 @@
 ---
 
 ## 2026-04-10
+### Entry #3 — Phase 3: Authentication
+
+Wired Clerk into backend and frontend. 24/24 tests passing.
+
+**Backend (`packages/server`):**
+- Installed `@clerk/express`
+- `src/middleware/auth.ts` — `clerkInit` (global, parses tokens) + `requireAuthMiddleware` (rejects 401 on all `/api/*` except health)
+- Health endpoint moved to register **before** `clerkMiddleware()` — fully public, never touched by Clerk
+- `src/routes/auth.ts` — `POST /api/auth/sync`: finds or creates Physician from Clerk user data (name + primary email)
+- `src/lib/getPhysician.ts` — `getPhysician(clerkId)` helper for use in future route handlers
+- `packages/server/.env` — added `CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` placeholders
+
+**Frontend (`packages/web`):**
+- Installed `@clerk/clerk-react` and `react-router-dom`
+- `src/App.tsx` — `ClerkProvider` wrapping full app, React Router with `/sign-in/*`, `/sign-up/*`, and protected `/*` routes; unauthenticated users redirected to `/sign-in`
+- `src/components/AuthSync.tsx` — calls `POST /api/auth/sync` once after sign-in (guarded by `useRef` to prevent double-fire)
+- `src/lib/api.ts` — `useApi()` hook: fetch wrapper that attaches Clerk Bearer token to every request
+- `src/pages/LandingPage.tsx` — added `<UserButton afterSignOutUrl="/sign-in" />` in header
+- `tsconfig.json` — added `"types": ["vite/client"]` for `import.meta.env` access
+- `packages/web/.env` — added `VITE_CLERK_PUBLISHABLE_KEY` placeholder
+
+**Tests (`src/__tests__/auth.test.ts`):**
+- `@clerk/express` fully mocked via `vi.mock` — no real Clerk credentials needed
+- Mock `requireAuth` reads `x-test-clerk-user-id` header to simulate auth
+- 7 tests: health stays public, unauthenticated 401s, sync creates physician, sync is idempotent, name edge cases (single name, no name → falls back to email)
+
+**Bugs fixed during implementation:**
+- Health endpoint was failing in tests because `clerkMiddleware()` validated `CLERK_PUBLISHABLE_KEY` even for public routes — fixed by registering health before `clerkInit`
+- `fullName` fallback used `email` before it was declared — fixed variable ordering
+
+**Key files:**
+- `packages/server/src/middleware/auth.ts`
+- `packages/server/src/routes/auth.ts`
+- `packages/server/src/lib/getPhysician.ts`
+- `packages/server/src/__tests__/auth.test.ts`
+- `packages/web/src/App.tsx`
+- `packages/web/src/components/AuthSync.tsx`
+- `packages/web/src/lib/api.ts`
+
+---
+
+## 2026-04-10
 ### Entry #2 — Phase 2: Database & Prisma Setup
 
 Installed Prisma v6, wrote the full schema, ran the migration, seeded demo data, and verified with 17 passing tests.
