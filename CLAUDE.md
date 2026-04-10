@@ -13,8 +13,8 @@ transcript, then review and approve them.
 - Monorepo with npm workspaces: packages/server, packages/web
 
 ## Current Phase
-[UPDATE THIS AS YOU PROGRESS]
-Phase 1: Project Scaffolding — IN PROGRESS
+Phase 1: Project Scaffolding — COMPLETE
+Phase 2: Database & Prisma Setup — NOT STARTED
 
 ## Commands
 - `npm run dev` — starts both frontend and backend

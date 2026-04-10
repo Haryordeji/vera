@@ -1,0 +1,15 @@
+{
+  "name": "vera",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=packages/server\" \"npm run dev --workspace=packages/web\"",
+    "test": "npm run test --workspace=packages/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
