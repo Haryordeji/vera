@@ -3,6 +3,50 @@
 ---
 
 ## 2026-04-10
+### Entry #4 — Phase 4: Frontend Shell & Navigation
+
+Built full app layout, routing, and placeholder pages. 42 total tests passing (18 new web tests).
+
+**Layout components (`src/components/layout/`):**
+- `AppLayout.tsx` — three-column shell: fixed sidebar | scrollable main | optional right panel. `title` prop sets top-bar h1. `rightPanel` prop enables the right column + History toggle button.
+- `Sidebar.tsx` — fixed left nav (240px). Brand mark at top, NavLink items (Dashboard, Past Visits, Settings) with blue active state, "Start New Visit" button → `/visits/new`, Clerk UserButton at bottom.
+- `RightPanel.tsx` — "Audit & Version History" column (288px). Mobile overlay + desktop inline. Close button. Accepts children (placeholder or real audit content). Controlled open/close via props.
+
+**Pages:**
+- `DashboardPage` — welcome heading, 3 stat cards (placeholders), "Start New Visit" CTA, recent visits empty state
+- `NewVisitPage` — heading + patient selection placeholder
+- `ActiveVisitPage` — full three-column layout (right panel with audit placeholder), audio/transcript/SOAP panels as dashed-border placeholders, disabled action buttons
+- `PastVisitsPage` — search bar placeholder + empty state
+- `SettingsPage` — profile form placeholder (Full Name, Email, Credentials)
+
+**Routing (`App.tsx`):**
+- `AuthenticatedRoutes` component wraps all app routes inside `AuthSync`
+- Routes: `/` → Dashboard, `/visits/new` → New Visit, `/visits/:id` → Active Visit, `/visits` → Past Visits, `/settings` → Settings
+- `LandingPage.tsx` removed (replaced by DashboardPage)
+
+**Tests (`src/__tests__/routing.test.tsx`):**
+- 18 tests: page rendering, AppLayout structure (3 columns, toggle), Sidebar nav links + hrefs, ActiveVisitPage right panel
+- Clerk mocked via `vi.mock("@clerk/clerk-react")` — no credentials needed
+- AuthSync mocked to avoid API calls
+- Key lesson: use `getByRole("heading", { level: 2, name: ... })` when AppLayout renders both an h1 (top bar) and h2 (page body) with the same text
+
+**Testing setup (`packages/web`):**
+- Installed: `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`, `jsdom`
+- `vite.config.ts` — added `test: { globals: true, environment: "jsdom", setupFiles: ... }`
+- `src/setupTests.ts` — imports `@testing-library/jest-dom`
+- `package.json` — added `"test": "vitest run"` script
+
+**Key files:**
+- `packages/web/src/components/layout/AppLayout.tsx`
+- `packages/web/src/components/layout/Sidebar.tsx`
+- `packages/web/src/components/layout/RightPanel.tsx`
+- `packages/web/src/pages/{Dashboard,NewVisit,ActiveVisit,PastVisits,Settings}Page.tsx`
+- `packages/web/src/App.tsx`
+- `packages/web/src/__tests__/routing.test.tsx`
+
+---
+
+## 2026-04-10
 ### Entry #3 — Phase 3: Authentication
 
 Wired Clerk into backend and frontend. 24/24 tests passing.

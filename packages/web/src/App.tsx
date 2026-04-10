@@ -7,13 +7,31 @@ import {
   RedirectToSignIn,
 } from "@clerk/clerk-react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import LandingPage from "./pages/LandingPage";
 import { AuthSync } from "./components/AuthSync";
+import DashboardPage from "./pages/DashboardPage";
+import NewVisitPage from "./pages/NewVisitPage";
+import ActiveVisitPage from "./pages/ActiveVisitPage";
+import PastVisitsPage from "./pages/PastVisitsPage";
+import SettingsPage from "./pages/SettingsPage";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
 
 if (!PUBLISHABLE_KEY) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY in environment");
+}
+
+function AuthenticatedRoutes() {
+  return (
+    <AuthSync>
+      <Routes>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/visits/new" element={<NewVisitPage />} />
+        <Route path="/visits/:id" element={<ActiveVisitPage />} />
+        <Route path="/visits" element={<PastVisitsPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+      </Routes>
+    </AuthSync>
+  );
 }
 
 export default function App() {
@@ -31,15 +49,13 @@ export default function App() {
             element={<SignUp routing="path" path="/sign-up" />}
           />
 
-          {/* All other routes require authentication */}
+          {/* All authenticated routes */}
           <Route
             path="/*"
             element={
               <>
                 <SignedIn>
-                  <AuthSync>
-                    <LandingPage />
-                  </AuthSync>
+                  <AuthenticatedRoutes />
                 </SignedIn>
                 <SignedOut>
                   <RedirectToSignIn />
