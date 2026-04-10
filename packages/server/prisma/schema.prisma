@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Physician {
+  id          String    @id @default(uuid())
+  clerkId     String    @unique
+  fullName    String
+  email       String    @unique
+  credentials String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  sessions      Session[]
+  approvedNotes SoapNote[] @relation("ApprovedBy")
+}
+
+model Patient {
+  id          String    @id @default(uuid())
+  fullName    String
+  dateOfBirth DateTime?
+  mrn         String?   @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  sessions Session[]
+}
+
+model Session {
+  id           String        @id @default(uuid())
+  physicianId  String
+  patientId    String
+  status       SessionStatus @default(RECORDING)
+  recordedAt   DateTime      @default(now())
+  audioFileUrl String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  physician   Physician    @relation(fields: [physicianId], references: [id])
+  patient     Patient      @relation(fields: [patientId], references: [id])
+  transcript  Transcript?
+  soapNote    SoapNote?
+  auditEvents AuditEvent[]
+}
+
+enum SessionStatus {
+  RECORDING
+  TRANSCRIBING
+  GENERATING_NOTE
+  IN_REVIEW
+  COMPLETED
+}
+
+model Transcript {
+  id              String   @id @default(uuid())
+  sessionId       String   @unique
+  rawDiarizedText String
+  plainText       String
+  generatedAt     DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id])
+}
+
+model SoapNote {
+  id             String         @id @default(uuid())
+  sessionId      String         @unique
+  subjective     String
+  objective      String
+  assessment     String
+  plan           String
+  workflowStatus WorkflowStatus @default(DRAFT)
+  approvedAt     DateTime?
+  approvedById   String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  session    Session    @relation(fields: [sessionId], references: [id])
+  approvedBy Physician? @relation("ApprovedBy", fields: [approvedById], references: [id])
+}
+
+enum WorkflowStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+}
+
+model AuditEvent {
+  id          String   @id @default(uuid())
+  sessionId   String
+  eventType   String
+  description String?
+  author      String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id])
+}
