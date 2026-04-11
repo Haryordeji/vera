@@ -8,6 +8,7 @@ import type { Utterance } from "@/components/transcript/TranscriptViewer";
 import { SoapNoteEditor } from "@/components/soap/SoapNoteEditor";
 import type { SoapContent } from "@/components/soap/SoapNoteEditor";
 import { SoapWorkflowActions } from "@/components/soap/SoapWorkflowActions";
+import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import { useToast } from "@/components/ui/Toast";
 import { useApi } from "@/lib/api";
 import type { Session, AuditEvent, SoapNote } from "@/lib/types";
@@ -23,49 +24,13 @@ function formatDate(iso: string) {
   });
 }
 
-function AuditTimeline({ events }: { events: AuditEvent[] }) {
-  const dotColor: Record<string, string> = {
-    SESSION_CREATED: "bg-blue-400",
-    AUDIO_CAPTURED: "bg-green-400",
-    TRANSCRIPT_GENERATED: "bg-purple-400",
-    SOAP_DRAFT_CREATED: "bg-yellow-400",
-    SOAP_EDITED: "bg-orange-400",
-    NOTE_APPROVED: "bg-emerald-500",
-  };
-
-  if (events.length === 0) {
-    return <p className="text-sm text-slate-400 italic">No events yet.</p>;
-  }
-
-  return (
-    <div className="space-y-4">
-      {events.map((e) => (
-        <div key={e.id} className="flex items-start gap-3">
-          <div
-            className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
-              dotColor[e.eventType] ?? "bg-slate-300"
-            }`}
-          />
-          <div>
-            <p className="text-sm text-slate-700 font-medium">
-              {e.description ?? e.eventType}
-            </p>
-            <p className="text-xs text-slate-400">
-              {new Date(e.createdAt).toLocaleTimeString()}
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export default function ActiveVisitPage() {
   const { id } = useParams<{ id: string }>();
   const { get, post, put } = useApi();
   const { showToast } = useToast();
 
   const [session, setSession] = useState<Session | null>(null);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [transcribing, setTranscribing] = useState(false);
   const [generatingSoap, setGeneratingSoap] = useState(false);
@@ -73,11 +38,22 @@ export default function ActiveVisitPage() {
   // Local edits to SOAP content (before saving)
   const [soapEdits, setSoapEdits] = useState<SoapContent | null>(null);
 
+  const fetchAuditEvents = useCallback(async () => {
+    if (!id) return;
+    try {
+      const events = await get<AuditEvent[]>(`/sessions/${id}/audit-events`);
+      setAuditEvents(events);
+    } catch {
+      // silently ignore — timeline will show stale events
+    }
+  }, [get, id]);
+
   const fetchSession = useCallback(async () => {
     if (!id) return;
     try {
       const s = await get<Session>(`/sessions/${id}`);
       setSession(s);
+      if (s?.auditEvents) setAuditEvents(s.auditEvents);
     } catch {
       // session not found — leave null
     } finally {
@@ -100,6 +76,7 @@ export default function ActiveVisitPage() {
       try {
         const transcribed = await post<Session>(`/sessions/${id}/transcribe`);
         setSession(transcribed);
+        if (transcribed?.auditEvents) setAuditEvents(transcribed.auditEvents);
       } catch {
         // Pipeline failed — session retains its last known status
       } finally {
@@ -133,12 +110,13 @@ export default function ActiveVisitPage() {
       const updated = await put<SoapNote>(`/sessions/${id}/soap-note`, soapEdits);
       setSession((prev) => (prev ? { ...prev, soapNote: updated } : prev));
       showToast("Draft saved successfully");
+      fetchAuditEvents();
     } catch {
       showToast("Failed to save draft", "error");
     } finally {
       setSavingDraft(false);
     }
-  }, [id, soapEdits, put, showToast]);
+  }, [id, soapEdits, put, showToast, fetchAuditEvents]);
 
   const handleRequestReview = useCallback(async () => {
     if (!id) return;
@@ -146,10 +124,11 @@ export default function ActiveVisitPage() {
       const updated = await post<SoapNote>(`/sessions/${id}/soap-note/submit-review`);
       setSession((prev) => (prev ? { ...prev, soapNote: updated } : prev));
       showToast("Note submitted for review");
+      fetchAuditEvents();
     } catch {
       showToast("Failed to submit for review", "error");
     }
-  }, [id, post, showToast]);
+  }, [id, post, showToast, fetchAuditEvents]);
 
   const handleApprove = useCallback(async () => {
     if (!id) return;
@@ -159,10 +138,11 @@ export default function ActiveVisitPage() {
         prev ? { ...prev, status: "COMPLETED", soapNote: updated } : prev
       );
       showToast("SOAP note approved and finalized");
+      fetchAuditEvents();
     } catch {
       showToast("Failed to approve note", "error");
     }
-  }, [id, post, showToast]);
+  }, [id, post, showToast, fetchAuditEvents]);
 
   // Parse utterances from session transcript if present
   const utterances: Utterance[] = (() => {
@@ -177,12 +157,8 @@ export default function ActiveVisitPage() {
 
   const isApproved = session?.soapNote?.workflowStatus === "APPROVED";
 
-  const auditEvents: AuditEvent[] = session?.auditEvents ?? [];
-
   const rightPanel = (
-    <div className="space-y-4">
-      <AuditTimeline events={auditEvents} />
-    </div>
+    <AuditTimeline events={auditEvents} />
   );
 
   if (loading) {

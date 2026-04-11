@@ -673,4 +673,44 @@ router.post("/:id/soap-note/approve", async (req: Request, res: Response, next: 
   }
 });
 
+/** GET /api/sessions/:id/audit-events — all audit events for a session, ASC */
+router.get("/:id/audit-events", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+
+    const physician = await getPhysician(userId);
+    if (!physician) {
+      res.status(400).json({ error: "Physician profile not found." });
+      return;
+    }
+
+    const session = await prisma.session.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    if (session.physicianId !== physician.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    const events = await prisma.auditEvent.findMany({
+      where: { sessionId: req.params.id },
+      orderBy: { createdAt: "asc" },
+    });
+
+    res.json(events);
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

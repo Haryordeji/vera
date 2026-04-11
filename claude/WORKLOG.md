@@ -3,6 +3,38 @@
 ---
 
 ## 2026-04-10
+### Entry #10 — Phase 10: Audit Trail & Version History
+
+Proper AuditTimeline component with icons/badges/metadata expansion wired into the right panel. Dedicated audit-events endpoint. 184 total tests passing (98 server + 86 web).
+
+**Backend (`packages/server`):**
+- `GET /api/sessions/:id/audit-events` — returns all audit events for a session ordered by `createdAt ASC`. Auth-protected (401/403/404). All 7 event types verified present in the system (SESSION_CREATED, AUDIO_CAPTURED, TRANSCRIPT_GENERATED, SOAP_DRAFT_CREATED, SOAP_EDITED, REVIEW_REQUESTED, NOTE_APPROVED).
+
+**Frontend (`packages/web`):**
+- `src/components/audit/AuditTimeline.tsx` — full timeline component replacing the inline version in ActiveVisitPage. Features:
+  - Vertical connecting line between events
+  - Color-coded icon circles per event type (Users, Mic, FileText, Sparkles, PenLine, Eye, CheckCircle2 from lucide-react)
+  - Color-coded badges: "Signed" (emerald) for NOTE_APPROVED, "Draft" (yellow) for SOAP_DRAFT_CREATED, "In Review" (sky) for REVIEW_REQUESTED, etc.
+  - Formatted timestamp (HH:MM AM/PM) + author
+  - Collapsible metadata section for SOAP_EDITED events showing which fields changed
+  - Event count footer (`N events total`)
+  - Empty state with History icon
+- `src/pages/ActiveVisitPage.tsx` — replaced inline AuditTimeline, added separate `auditEvents` state, `fetchAuditEvents()` using `GET /sessions/:id/audit-events`. Audit events refresh automatically after save draft, request review, and approve actions. Initialized from session.auditEvents on load and transcribe response.
+
+**Tests:**
+- `packages/server/src/__tests__/auditEvents.test.ts` — 6 tests: events returned in chronological order (regardless of insertion order), all required fields present, empty array for session with no events, 401/404/403.
+- `packages/web/src/__tests__/auditTimeline.test.tsx` — 16 tests: empty state, event count, description text, author display, icons per event type, badge labels and colors, metadata expand/collapse, event count footer (singular/plural).
+
+**Key files:**
+- `packages/server/src/routes/sessions.ts` (added audit-events route)
+- `packages/server/src/__tests__/auditEvents.test.ts`
+- `packages/web/src/components/audit/AuditTimeline.tsx`
+- `packages/web/src/pages/ActiveVisitPage.tsx`
+- `packages/web/src/__tests__/auditTimeline.test.tsx`
+
+---
+
+## 2026-04-10
 ### Entry #9 — Phase 9: Review & Approval Workflow
 
 Full SOAP note workflow (DRAFT → PENDING_REVIEW → APPROVED) with editing, confirmation dialogs, toast notifications, and read-only approved state. 162 total tests passing (92 server + 70 web).
