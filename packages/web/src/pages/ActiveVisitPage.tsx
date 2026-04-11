@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatusBadge } from "@/components/visit/StatusBadge";
 import { AudioRecorder } from "@/components/audio/AudioRecorder";
+import { TranscriptViewer } from "@/components/transcript/TranscriptViewer";
+import type { Utterance } from "@/components/transcript/TranscriptViewer";
 import { useApi } from "@/lib/api";
 import type { Session, AuditEvent } from "@/lib/types";
 import { FileText, ClipboardList, Loader2 } from "lucide-react";
@@ -28,9 +30,7 @@ function AuditTimeline({ events }: { events: AuditEvent[] }) {
   };
 
   if (events.length === 0) {
-    return (
-      <p className="text-sm text-slate-400 italic">No events yet.</p>
-    );
+    return <p className="text-sm text-slate-400 italic">No events yet.</p>;
   }
 
   return (
@@ -38,7 +38,9 @@ function AuditTimeline({ events }: { events: AuditEvent[] }) {
       {events.map((e) => (
         <div key={e.id} className="flex items-start gap-3">
           <div
-            className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${dotColor[e.eventType] ?? "bg-slate-300"}`}
+            className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+              dotColor[e.eventType] ?? "bg-slate-300"
+            }`}
           />
           <div>
             <p className="text-sm text-slate-700 font-medium">
@@ -56,10 +58,11 @@ function AuditTimeline({ events }: { events: AuditEvent[] }) {
 
 export default function ActiveVisitPage() {
   const { id } = useParams<{ id: string }>();
-  const { get } = useApi();
+  const { get, post } = useApi();
 
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [transcribing, setTranscribing] = useState(false);
 
   const fetchSession = useCallback(async () => {
     if (!id) return;
@@ -67,7 +70,7 @@ export default function ActiveVisitPage() {
       const s = await get<Session>(`/sessions/${id}`);
       setSession(s);
     } catch {
-      // session not found or error — leave null
+      // session not found — leave null
     } finally {
       setLoading(false);
     }
@@ -76,6 +79,36 @@ export default function ActiveVisitPage() {
   useEffect(() => {
     fetchSession();
   }, [fetchSession]);
+
+  const handleUploadComplete = useCallback(
+    async (uploaded: Session) => {
+      setSession(uploaded);
+      if (!id) return;
+
+      // Auto-trigger transcription after successful upload
+      setTranscribing(true);
+      try {
+        const transcribed = await post<Session>(`/sessions/${id}/transcribe`);
+        setSession(transcribed);
+      } catch {
+        // Transcription failed — session still updated with TRANSCRIBING status
+      } finally {
+        setTranscribing(false);
+      }
+    },
+    [post, id]
+  );
+
+  // Parse utterances from session transcript if present
+  const utterances: Utterance[] = (() => {
+    const raw = session?.transcript?.rawDiarizedText;
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw) as Utterance[];
+    } catch {
+      return [];
+    }
+  })();
 
   const auditEvents: AuditEvent[] = session?.auditEvents ?? [];
 
@@ -105,17 +138,23 @@ export default function ActiveVisitPage() {
               {session?.patient?.fullName ?? "Unknown Patient"}
             </h2>
             <p className="text-sm text-slate-500 mt-0.5">
-              {session ? formatDate(session.recordedAt) : "—"}
+              {session?.recordedAt ? formatDate(session.recordedAt) : "—"}
             </p>
           </div>
-          {session && <StatusBadge status={session.status} />}
+          {session?.status && <StatusBadge status={session.status} />}
         </div>
 
         {/* Audio recorder panel */}
         <section className="bg-white rounded-lg border border-slate-200 p-5">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-4 h-4 text-slate-500 flex items-center justify-center">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="w-4 h-4"
+              >
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                 <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                 <line x1="12" y1="19" x2="12" y2="23" />
@@ -129,7 +168,7 @@ export default function ActiveVisitPage() {
           {id ? (
             <AudioRecorder
               sessionId={id}
-              onUploadComplete={(updated) => setSession(updated)}
+              onUploadComplete={handleUploadComplete}
             />
           ) : (
             <p className="text-sm text-slate-400">No session ID.</p>
@@ -140,15 +179,9 @@ export default function ActiveVisitPage() {
         <section className="bg-white rounded-lg border border-slate-200 p-5">
           <div className="flex items-center gap-2 mb-4">
             <FileText className="w-4 h-4 text-slate-500" />
-            <h3 className="text-sm font-semibold text-slate-700">
-              Transcript
-            </h3>
+            <h3 className="text-sm font-semibold text-slate-700">Transcript</h3>
           </div>
-          <div className="flex items-center justify-center h-28 bg-slate-50 rounded-md border border-dashed border-slate-200">
-            <p className="text-sm text-slate-400">
-              Transcript will appear here after recording.
-            </p>
-          </div>
+          <TranscriptViewer utterances={utterances} loading={transcribing} />
         </section>
 
         {/* SOAP note panel */}

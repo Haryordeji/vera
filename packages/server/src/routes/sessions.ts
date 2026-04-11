@@ -6,6 +6,7 @@ import { getAuth } from "@clerk/express";
 import { prisma } from "../lib/prisma";
 import { getPhysician } from "../lib/getPhysician";
 import { SessionStatus } from "../generated/prisma/enums";
+import { TranscriptionService } from "../services/transcription";
 
 const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR ?? "./uploads");
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -223,5 +224,92 @@ router.post(
     }
   }
 );
+
+/** POST /api/sessions/:id/transcribe — send audio to AssemblyAI, store transcript */
+router.post("/:id/transcribe", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+
+    const physician = await getPhysician(userId);
+    if (!physician) {
+      res.status(400).json({ error: "Physician profile not found." });
+      return;
+    }
+
+    const session = await prisma.session.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    if (session.physicianId !== physician.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    if (!session.audioFileUrl) {
+      res.status(400).json({ error: "Session has no audio file. Upload audio first." });
+      return;
+    }
+
+    const apiKey = process.env.ASSEMBLYAI_API_KEY;
+    if (!apiKey) {
+      res.status(500).json({ error: "ASSEMBLYAI_API_KEY is not configured." });
+      return;
+    }
+
+    const service = new TranscriptionService(apiKey);
+    const result = await service.transcribe(session.audioFileUrl);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      // Upsert transcript (re-transcribing replaces the previous one)
+      await tx.transcript.upsert({
+        where: { sessionId: session.id },
+        create: {
+          sessionId: session.id,
+          rawDiarizedText: JSON.stringify(result.utterances),
+          plainText: result.plainText,
+        },
+        update: {
+          rawDiarizedText: JSON.stringify(result.utterances),
+          plainText: result.plainText,
+        },
+      });
+
+      const s = await tx.session.update({
+        where: { id: session.id },
+        data: { status: SessionStatus.GENERATING_NOTE },
+        include: {
+          patient: true,
+          physician: true,
+          transcript: true,
+          auditEvents: { orderBy: { createdAt: "asc" } },
+        },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          sessionId: session.id,
+          eventType: "TRANSCRIPT_GENERATED",
+          description: `Transcript generated (${result.utterances.length} utterances)`,
+          author: "System",
+        },
+      });
+
+      return s;
+    });
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
 
 export default router;

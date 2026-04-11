@@ -3,6 +3,34 @@
 ---
 
 ## 2026-04-10
+### Entry #7 — Phase 7: Transcription Pipeline
+
+AssemblyAI transcription with speaker diarization wired end-to-end. 123 total tests passing (68 server + 55 web).
+
+**Backend (`packages/server`):**
+- Installed `assemblyai` SDK
+- `src/services/transcription.ts` — `TranscriptionService` class: calls `client.transcripts.transcribe()` with `speaker_labels: true`, maps first speaker → "Doctor" / others → "Patient" (clinical heuristic), converts ms→seconds, builds `plainText` as `"Speaker: text\n\nSpeaker: text"`, throws on error status
+- `POST /api/sessions/:id/transcribe` — validates session exists + has `audioFileUrl` + checks `ASSEMBLYAI_API_KEY`, calls `TranscriptionService`, upserts `Transcript` record, updates session to `GENERATING_NOTE`, creates `TRANSCRIPT_GENERATED` audit event, returns updated session with full includes
+
+**Frontend (`packages/web`):**
+- `src/components/transcript/TranscriptViewer.tsx` — three states: loading (spinner + "Transcribing your recording…"), empty (dashed placeholder), content (chat-like layout: Doctor = blue-left, Patient = slate-right, `data-speaker` attr for querying, timestamps in MM:SS)
+- `src/pages/ActiveVisitPage.tsx` — `handleUploadComplete` callback auto-calls `POST /sessions/:id/transcribe` after audio upload; `transcribing` state passed to `TranscriptViewer`; utterances parsed from `session.transcript.rawDiarizedText` JSON
+
+**Tests:**
+- `packages/server/src/__tests__/transcription.test.ts` — 9 tests: speaker mapping (first=Doctor), ms→seconds conversion, plainText format, empty utterances, error status throws; endpoint tests: creates Transcript + audit event, 400 on no audio file, 404 on bad session, 401 without auth
+- `packages/web/src/__tests__/transcriptViewer.test.tsx` — 11 tests: loading state, empty state, utterance count, Doctor/Patient text, data-speaker attrs, blue/slate color classes, ml-auto alignment, MM:SS timestamp format
+
+**Key files:**
+- `packages/server/src/services/transcription.ts`
+- `packages/server/src/routes/sessions.ts` (added transcribe route)
+- `packages/server/src/__tests__/transcription.test.ts`
+- `packages/web/src/components/transcript/TranscriptViewer.tsx`
+- `packages/web/src/pages/ActiveVisitPage.tsx`
+- `packages/web/src/__tests__/transcriptViewer.test.tsx`
+
+---
+
+## 2026-04-10
 ### Entry #6 — Phase 6: Audio Recording & Upload
 
 Browser audio recording with MediaRecorder API, auto-upload to backend, and full playback. 103 total tests passing (59 server + 44 web).
