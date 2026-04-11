@@ -1,4 +1,6 @@
 import "dotenv/config";
+import path from "path";
+import fs from "fs";
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 
@@ -241,5 +243,77 @@ describe("GET /api/sessions/:id", () => {
 
     await prisma.session.delete({ where: { id: otherSession.id } });
     await prisma.physician.delete({ where: { id: otherPhysician.id } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/sessions/:id/upload-audio
+// ---------------------------------------------------------------------------
+describe("POST /api/sessions/:id/upload-audio", () => {
+  const UPLOAD_DIR = path.resolve("./uploads");
+  const TEST_AUDIO = Buffer.from("fake webm audio for testing");
+
+  afterAll(() => {
+    // Clean up any files written during these tests
+    const filePath = path.join(UPLOAD_DIR, `${sessionId}.webm`);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  });
+
+  it("saves file, sets audioFileUrl, and transitions session to TRANSCRIBING", async () => {
+    const res = await request(app)
+      .post(`/api/sessions/${sessionId}/upload-audio`)
+      .set(AUTH)
+      .attach("audio", TEST_AUDIO, {
+        filename: "recording.webm",
+        contentType: "audio/webm",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("TRANSCRIBING");
+    expect(res.body.audioFileUrl).toBeTruthy();
+    expect(res.body.audioFileUrl).toContain(sessionId);
+
+    // File should exist on disk
+    expect(fs.existsSync(res.body.audioFileUrl)).toBe(true);
+  });
+
+  it("creates an AUDIO_CAPTURED audit event", async () => {
+    const events = await prisma.auditEvent.findMany({
+      where: { sessionId, eventType: "AUDIO_CAPTURED" },
+    });
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    expect(events[0].author).toBe("Dr. Sessions Test");
+  });
+
+  it("returns 400 when no file is attached", async () => {
+    const res = await request(app)
+      .post(`/api/sessions/${sessionId}/upload-audio`)
+      .set(AUTH);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/file/i);
+  });
+
+  it("returns 404 for a non-existent session", async () => {
+    const res = await request(app)
+      .post("/api/sessions/00000000-0000-0000-0000-000000000000/upload-audio")
+      .set(AUTH)
+      .attach("audio", TEST_AUDIO, {
+        filename: "recording.webm",
+        contentType: "audio/webm",
+      });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 401 without auth", async () => {
+    const res = await request(app)
+      .post(`/api/sessions/${sessionId}/upload-audio`)
+      .attach("audio", TEST_AUDIO, {
+        filename: "recording.webm",
+        contentType: "audio/webm",
+      });
+
+    expect(res.status).toBe(401);
   });
 });

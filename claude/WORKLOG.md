@@ -3,6 +3,43 @@
 ---
 
 ## 2026-04-10
+### Entry #6 — Phase 6: Audio Recording & Upload
+
+Browser audio recording with MediaRecorder API, auto-upload to backend, and full playback. 103 total tests passing (59 server + 44 web).
+
+**Backend (`packages/server`):**
+- Installed `multer` v2 for multipart file handling
+- Created `uploads/` directory (gitignored)
+- `POST /api/sessions/:id/upload-audio` — accepts `audio` field, saves to `./uploads/{sessionId}.webm`, updates `audioFileUrl`, transitions session status to `TRANSCRIBING`, creates `AUDIO_CAPTURED` audit event in `$transaction`
+- Returns updated session with patient + physician includes
+
+**Frontend (`packages/web`):**
+- `src/lib/api.ts` — added `uploadFile(path, FormData)` method (no Content-Type header so browser sets multipart boundary automatically)
+- `src/hooks/useAudioRecorder.ts` — custom hook exposing `startRecording`, `stopRecording`, `isRecording`, `duration` (seconds), `audioBlob`, `error`. Uses `MediaRecorder` with `audio/webm` (falls back to `audio/ogg`). Timer via `setInterval`.
+- `src/components/audio/AudioRecorder.tsx` — three visual states: idle (Start Recording btn), recording (pulsing red dot + MM:SS timer + Stop btn), post-recording (auto-upload → playback `<audio>` element). Shows upload progress and success/error states.
+- `src/pages/ActiveVisitPage.tsx` — now fetches session data (`GET /api/sessions/:id`), shows patient name, formatted date, StatusBadge, and the real AudioRecorder. AuditTimeline reads from `session.auditEvents`.
+
+**Tests:**
+- `packages/server/src/__tests__/sessions.test.ts` — 5 new tests: file saved + session updated, audit event created, 400 on missing file, 404 on bad session ID, 401 without auth
+- `packages/web/src/__tests__/audioRecorder.test.tsx` — 11 tests across 5 describe blocks: idle state (Start Recording btn, no controls shown), recording state (01:05 timer, Stop btn, indicator), upload success (audio player visible), upload error (error message), mic error (error message from hook)
+
+**Key bugs fixed:**
+- `await waitFor(() => expect(...))` needed for async upload state assertions — `await act(async () => { render() })` alone doesn't wait for nested async Promises in useEffect
+- `vi.hoisted()` again used for stable mock references in `audioRecorder.test.tsx` (same infinite re-render issue pattern as routing tests)
+- `URL.createObjectURL` stubbed via `Object.defineProperty` in `beforeAll` since jsdom doesn't implement it
+
+**Key files:**
+- `packages/server/src/routes/sessions.ts` (added upload route)
+- `packages/server/src/__tests__/sessions.test.ts` (added 5 upload tests)
+- `packages/web/src/lib/api.ts`
+- `packages/web/src/hooks/useAudioRecorder.ts`
+- `packages/web/src/components/audio/AudioRecorder.tsx`
+- `packages/web/src/pages/ActiveVisitPage.tsx`
+- `packages/web/src/__tests__/audioRecorder.test.tsx`
+
+---
+
+## 2026-04-10
 ### Entry #5 — Phase 5: Patient Management & Session Creation
 
 Full patient CRUD + session routes on the backend, and real data-driven frontend pages. 87 total tests passing (54 server + 33 web).

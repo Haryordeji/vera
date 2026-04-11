@@ -1,8 +1,21 @@
+import path from "path";
+import fs from "fs";
 import { Router, Request, Response, NextFunction } from "express";
+import multer from "multer";
 import { getAuth } from "@clerk/express";
 import { prisma } from "../lib/prisma";
 import { getPhysician } from "../lib/getPhysician";
 import { SessionStatus } from "../generated/prisma/enums";
+
+const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR ?? "./uploads");
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: UPLOAD_DIR,
+  filename: (req, _file, cb) => cb(null, `${req.params.id}.webm`),
+});
+
+const upload = multer({ storage });
 
 const router = Router();
 
@@ -139,5 +152,76 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
     next(err);
   }
 });
+
+/** POST /api/sessions/:id/upload-audio — accept audio file, update session */
+router.post(
+  "/:id/upload-audio",
+  upload.single("audio"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { userId } = getAuth(req);
+      if (!userId) {
+        res.status(401).json({ error: "Unauthenticated" });
+        return;
+      }
+
+      if (!req.file) {
+        res.status(400).json({ error: "No audio file provided" });
+        return;
+      }
+
+      const physician = await getPhysician(userId);
+      if (!physician) {
+        res.status(400).json({ error: "Physician profile not found." });
+        return;
+      }
+
+      const session = await prisma.session.findUnique({
+        where: { id: req.params.id },
+      });
+
+      if (!session) {
+        // Remove uploaded file — session doesn't exist
+        fs.unlink(req.file.path, () => {});
+        res.status(404).json({ error: "Session not found" });
+        return;
+      }
+
+      if (session.physicianId !== physician.id) {
+        fs.unlink(req.file.path, () => {});
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+
+      const audioFileUrl = req.file.path;
+
+      const updated = await prisma.$transaction(async (tx) => {
+        const s = await tx.session.update({
+          where: { id: session.id },
+          data: {
+            audioFileUrl,
+            status: SessionStatus.TRANSCRIBING,
+          },
+          include: { patient: true, physician: true },
+        });
+
+        await tx.auditEvent.create({
+          data: {
+            sessionId: session.id,
+            eventType: "AUDIO_CAPTURED",
+            description: "Audio recording uploaded successfully",
+            author: physician.fullName,
+          },
+        });
+
+        return s;
+      });
+
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 export default router;

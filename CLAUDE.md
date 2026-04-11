@@ -18,7 +18,8 @@ Phase 2: Database & Prisma Setup — COMPLETE
 Phase 3: Authentication — COMPLETE
 Phase 4: Frontend Shell & Navigation — COMPLETE
 Phase 5: Patient Management & Session Creation — COMPLETE
-Phase 6: Audio Recording & Upload — NOT STARTED
+Phase 6: Audio Recording & Upload — COMPLETE
+Phase 7: Transcription Pipeline — NOT STARTED
 
 ## Commands
 - `npm run dev` — starts both frontend and backend

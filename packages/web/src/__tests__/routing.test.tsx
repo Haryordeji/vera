@@ -7,10 +7,14 @@ import { MemoryRouter } from "react-router-dom";
 // Mock useApi — stable function references via vi.hoisted() so the
 // useEffect([get]) dep never changes between renders (prevents infinite loops).
 // ---------------------------------------------------------------------------
-const { mockGet, mockPost, mockPut } = vi.hoisted(() => ({
-  mockGet: vi.fn().mockResolvedValue([]),
+const { mockGet, mockPost, mockPut, mockUploadFile } = vi.hoisted(() => ({
+  // Return null for single-resource paths (/sessions/:id), [] for lists
+  mockGet: vi.fn().mockImplementation((path: string) =>
+    /\/sessions\/[^/]+$/.test(path) ? Promise.resolve(null) : Promise.resolve([])
+  ),
   mockPost: vi.fn().mockResolvedValue(null),
   mockPut: vi.fn().mockResolvedValue(null),
+  mockUploadFile: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -18,6 +22,7 @@ vi.mock("@/lib/api", () => ({
     get: mockGet,
     post: mockPost,
     put: mockPut,
+    uploadFile: mockUploadFile,
   }),
 }));
 

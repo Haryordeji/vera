@@ -57,5 +57,23 @@ export function useApi() {
     [request]
   );
 
-  return { get, post, put };
+  /** Upload a file as multipart/form-data (no Content-Type header — browser sets it with boundary). */
+  const uploadFile = useCallback(
+    async <T>(path: string, formData: FormData): Promise<T> => {
+      const token = await getToken();
+      const res = await fetch(`${BASE}${path}`, {
+        method: "POST",
+        body: formData,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`API ${res.status}: ${body}`);
+      }
+      return res.json() as Promise<T>;
+    },
+    [getToken]
+  );
+
+  return { get, post, put, uploadFile };
 }
