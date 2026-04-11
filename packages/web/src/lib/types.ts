@@ -44,6 +44,7 @@ export interface SoapNote {
   workflowStatus: WorkflowStatus;
   approvedAt: string | null;
   approvedById: string | null;
+  approvedBy?: Physician | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -59,6 +60,7 @@ export interface Session {
   updatedAt: string;
   // Populated by GET /api/sessions and GET /api/sessions/:id
   patient?: Patient;
+  physician?: Physician;
   transcript?: Transcript | null;
   soapNote?: SoapNote | null;
   auditEvents?: AuditEvent[];

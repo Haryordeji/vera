@@ -5,7 +5,7 @@ import multer from "multer";
 import { getAuth } from "@clerk/express";
 import { prisma } from "../lib/prisma";
 import { getPhysician } from "../lib/getPhysician";
-import { SessionStatus } from "../generated/prisma/enums";
+import { SessionStatus, WorkflowStatus } from "../generated/prisma/enums";
 import { TranscriptionService } from "../services/transcription";
 import { SoapGenerationService } from "../services/soapGeneration";
 
@@ -133,7 +133,7 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
         patient: true,
         physician: true,
         transcript: true,
-        soapNote: true,
+        soapNote: { include: { approvedBy: true } },
         auditEvents: { orderBy: { createdAt: "asc" } },
       },
     });
@@ -342,7 +342,7 @@ router.post("/:id/transcribe", async (req: Request, res: Response, next: NextFun
         patient: true,
         physician: true,
         transcript: true,
-        soapNote: true,
+        soapNote: { include: { approvedBy: true } },
         auditEvents: { orderBy: { createdAt: "asc" } },
       },
     });
@@ -421,7 +421,7 @@ router.post("/:id/generate-soap", async (req: Request, res: Response, next: Next
           patient: true,
           physician: true,
           transcript: true,
-          soapNote: true,
+          soapNote: { include: { approvedBy: true } },
           auditEvents: { orderBy: { createdAt: "asc" } },
         },
       });
@@ -439,6 +439,235 @@ router.post("/:id/generate-soap", async (req: Request, res: Response, next: Next
     });
 
     res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** PUT /api/sessions/:id/soap-note — edit SOAP note sections */
+router.put("/:id/soap-note", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+
+    const physician = await getPhysician(userId);
+    if (!physician) {
+      res.status(400).json({ error: "Physician profile not found." });
+      return;
+    }
+
+    const session = await prisma.session.findUnique({
+      where: { id: req.params.id },
+      include: { soapNote: true },
+    });
+
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    if (session.physicianId !== physician.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    if (!session.soapNote) {
+      res.status(400).json({ error: "Session has no SOAP note." });
+      return;
+    }
+
+    if (session.soapNote.workflowStatus === WorkflowStatus.APPROVED) {
+      res.status(400).json({ error: "Cannot edit an approved SOAP note." });
+      return;
+    }
+
+    const { subjective, objective, assessment, plan } = req.body as {
+      subjective?: string;
+      objective?: string;
+      assessment?: string;
+      plan?: string;
+    };
+
+    // Track which fields actually changed
+    const changedFields: string[] = [];
+    if (subjective !== undefined && subjective !== session.soapNote.subjective) changedFields.push("subjective");
+    if (objective !== undefined && objective !== session.soapNote.objective) changedFields.push("objective");
+    if (assessment !== undefined && assessment !== session.soapNote.assessment) changedFields.push("assessment");
+    if (plan !== undefined && plan !== session.soapNote.plan) changedFields.push("plan");
+
+    const updateData: Record<string, string> = {};
+    if (subjective !== undefined) updateData.subjective = subjective;
+    if (objective !== undefined) updateData.objective = objective;
+    if (assessment !== undefined) updateData.assessment = assessment;
+    if (plan !== undefined) updateData.plan = plan;
+
+    const updatedNote = await prisma.$transaction(async (tx) => {
+      const note = await tx.soapNote.update({
+        where: { sessionId: session.id },
+        data: updateData,
+        include: { approvedBy: true },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          sessionId: session.id,
+          eventType: "SOAP_EDITED",
+          description: `SOAP note edited by ${physician.fullName}`,
+          author: physician.fullName,
+          metadata: { changedFields },
+        },
+      });
+
+      return note;
+    });
+
+    res.json(updatedNote);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /api/sessions/:id/soap-note/submit-review — DRAFT → PENDING_REVIEW */
+router.post("/:id/soap-note/submit-review", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+
+    const physician = await getPhysician(userId);
+    if (!physician) {
+      res.status(400).json({ error: "Physician profile not found." });
+      return;
+    }
+
+    const session = await prisma.session.findUnique({
+      where: { id: req.params.id },
+      include: { soapNote: true },
+    });
+
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    if (session.physicianId !== physician.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    if (!session.soapNote) {
+      res.status(400).json({ error: "Session has no SOAP note." });
+      return;
+    }
+
+    if (session.soapNote.workflowStatus !== WorkflowStatus.DRAFT) {
+      res.status(400).json({
+        error: `Cannot submit for review from status: ${session.soapNote.workflowStatus}`,
+      });
+      return;
+    }
+
+    const updatedNote = await prisma.$transaction(async (tx) => {
+      const note = await tx.soapNote.update({
+        where: { sessionId: session.id },
+        data: { workflowStatus: WorkflowStatus.PENDING_REVIEW },
+        include: { approvedBy: true },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          sessionId: session.id,
+          eventType: "REVIEW_REQUESTED",
+          description: `Review requested by ${physician.fullName}`,
+          author: physician.fullName,
+        },
+      });
+
+      return note;
+    });
+
+    res.json(updatedNote);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /api/sessions/:id/soap-note/approve — PENDING_REVIEW → APPROVED */
+router.post("/:id/soap-note/approve", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+
+    const physician = await getPhysician(userId);
+    if (!physician) {
+      res.status(400).json({ error: "Physician profile not found." });
+      return;
+    }
+
+    const session = await prisma.session.findUnique({
+      where: { id: req.params.id },
+      include: { soapNote: true },
+    });
+
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    if (session.physicianId !== physician.id) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    if (!session.soapNote) {
+      res.status(400).json({ error: "Session has no SOAP note." });
+      return;
+    }
+
+    if (session.soapNote.workflowStatus !== WorkflowStatus.PENDING_REVIEW) {
+      res.status(400).json({
+        error: `Cannot approve from status: ${session.soapNote.workflowStatus}`,
+      });
+      return;
+    }
+
+    const updatedNote = await prisma.$transaction(async (tx) => {
+      const note = await tx.soapNote.update({
+        where: { sessionId: session.id },
+        data: {
+          workflowStatus: WorkflowStatus.APPROVED,
+          approvedAt: new Date(),
+          approvedById: physician.id,
+        },
+        include: { approvedBy: true },
+      });
+
+      await tx.session.update({
+        where: { id: session.id },
+        data: { status: SessionStatus.COMPLETED },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          sessionId: session.id,
+          eventType: "NOTE_APPROVED",
+          description: `SOAP note approved by ${physician.fullName}`,
+          author: physician.fullName,
+        },
+      });
+
+      return note;
+    });
+
+    res.json(updatedNote);
   } catch (err) {
     next(err);
   }

@@ -43,10 +43,11 @@ const SECTIONS = [
 interface Props {
   note: SoapContent | null;
   loading?: boolean;
+  readOnly?: boolean;
   onChange?: (field: keyof SoapContent, value: string) => void;
 }
 
-export function SoapNoteEditor({ note, loading = false, onChange }: Props) {
+export function SoapNoteEditor({ note, loading = false, readOnly = false, onChange }: Props) {
   const [localNote, setLocalNote] = useState<SoapContent | null>(note);
 
   // Sync when note prop changes (e.g. after generation)
@@ -105,10 +106,16 @@ export function SoapNoteEditor({ note, loading = false, onChange }: Props) {
           </div>
           <textarea
             value={localNote[key]}
-            onChange={(e) => handleChange(key, e.target.value)}
+            onChange={(e) => !readOnly && handleChange(key, e.target.value)}
+            readOnly={readOnly}
             data-testid={`soap-textarea-${key}`}
             rows={4}
-            className="w-full text-sm text-slate-800 bg-white rounded-md border border-slate-200 px-3 py-2 outline-none focus:ring-1 focus:ring-blue-400 resize-y"
+            className={cn(
+              "w-full text-sm text-slate-800 rounded-md border border-slate-200 px-3 py-2 outline-none resize-y",
+              readOnly
+                ? "bg-slate-50 cursor-default"
+                : "bg-white focus:ring-1 focus:ring-blue-400"
+            )}
           />
         </div>
       ))}

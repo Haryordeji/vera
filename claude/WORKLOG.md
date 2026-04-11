@@ -3,6 +3,44 @@
 ---
 
 ## 2026-04-10
+### Entry #9 — Phase 9: Review & Approval Workflow
+
+Full SOAP note workflow (DRAFT → PENDING_REVIEW → APPROVED) with editing, confirmation dialogs, toast notifications, and read-only approved state. 162 total tests passing (92 server + 70 web).
+
+**Backend (`packages/server`):**
+- `PUT /api/sessions/:id/soap-note` — accepts partial updates to any SOAP section. Blocked when `workflowStatus = APPROVED`. Creates `SOAP_EDITED` audit event with `metadata: { changedFields }` listing which fields actually changed.
+- `POST /api/sessions/:id/soap-note/submit-review` — DRAFT → PENDING_REVIEW. Validates source status. Creates `REVIEW_REQUESTED` audit event.
+- `POST /api/sessions/:id/soap-note/approve` — PENDING_REVIEW → APPROVED. Sets `approvedAt` and `approvedById`. Updates session to `COMPLETED`. Creates `NOTE_APPROVED` audit event. Validated: can't approve from DRAFT.
+- All session includes updated to `soapNote: { include: { approvedBy: true } }` for physician name display.
+
+**Frontend (`packages/web`):**
+- `src/components/ui/Toast.tsx` — `ToastProvider` context + `useToast()` hook. Auto-dismiss after 3 seconds. `data-testid="toast-success"` / `data-testid="toast-error"`.
+- `src/components/ui/ConfirmDialog.tsx` — modal with title, message, confirm/cancel buttons. `data-testid="confirm-dialog"`.
+- `src/components/soap/SoapWorkflowActions.tsx` — conditionally renders: DRAFT → Save Draft + Request Review; PENDING_REVIEW → Save Draft + Sign & Finalize; APPROVED → nothing. Both destructive actions guarded by `ConfirmDialog`.
+- `src/components/soap/SoapNoteEditor.tsx` — added `readOnly` prop; textareas get `readOnly` attribute, styling switches to `bg-slate-50`.
+- `src/pages/ActiveVisitPage.tsx` — wired workflow handlers (`handleSaveDraft`, `handleRequestReview`, `handleApprove`), local `soapEdits` state for optimistic editing, `isApproved` flag, green "Approved" badge with physician name + date, `SoapWorkflowActions` rendered when SOAP note exists.
+- `src/App.tsx` — wrapped with `ToastProvider`.
+- `src/lib/types.ts` — added `approvedBy?: Physician | null` to `SoapNote`, `physician?: Physician` to `Session`.
+
+**Tests:**
+- `packages/server/src/__tests__/soapWorkflow.test.ts` — 15 tests: PUT saves + audit event, PUT blocked when APPROVED, submit-review transitions + audit event, submit-review blocked when not DRAFT, approve transitions + approvedAt/approvedById/session COMPLETED, approve blocked from DRAFT and APPROVED, 401/404 for all endpoints.
+- `packages/web/src/__tests__/soapWorkflow.test.tsx` — 20 tests: DRAFT/PENDING_REVIEW/APPROVED button visibility, Request Review confirm dialog, Sign & Finalize confirm dialog (irreversible warning), onSaveDraft/onRequestReview/onApprove callbacks, saving disabled state, readOnly textarea attributes, onChange blocked when readOnly, ConfirmDialog render states.
+
+**Key files:**
+- `packages/server/src/routes/sessions.ts` (3 new routes)
+- `packages/server/src/__tests__/soapWorkflow.test.ts`
+- `packages/web/src/components/ui/Toast.tsx`
+- `packages/web/src/components/ui/ConfirmDialog.tsx`
+- `packages/web/src/components/soap/SoapWorkflowActions.tsx`
+- `packages/web/src/components/soap/SoapNoteEditor.tsx`
+- `packages/web/src/pages/ActiveVisitPage.tsx`
+- `packages/web/src/App.tsx`
+- `packages/web/src/lib/types.ts`
+- `packages/web/src/__tests__/soapWorkflow.test.tsx`
+
+---
+
+## 2026-04-10
 ### Entry #8 — Phase 8: SOAP Note Generation
 
 LLM-powered SOAP note generation via OpenAI-compatible SDK (DeepSeek default), auto-chained after transcription. 123 total tests passing (79 server + 44 web).

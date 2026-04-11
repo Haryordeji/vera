@@ -8,6 +8,7 @@ import {
 } from "@clerk/clerk-react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthSync } from "./components/AuthSync";
+import { ToastProvider } from "./components/ui/Toast";
 import DashboardPage from "./pages/DashboardPage";
 import NewVisitPage from "./pages/NewVisitPage";
 import ActiveVisitPage from "./pages/ActiveVisitPage";
@@ -37,6 +38,7 @@ function AuthenticatedRoutes() {
 export default function App() {
   return (
     <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+      <ToastProvider>
       <BrowserRouter>
         <Routes>
           {/* Clerk-hosted auth pages */}
@@ -65,6 +67,7 @@ export default function App() {
           />
         </Routes>
       </BrowserRouter>
+      </ToastProvider>
     </ClerkProvider>
   );
 }

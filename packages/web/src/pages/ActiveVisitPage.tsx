@@ -7,9 +7,11 @@ import { TranscriptViewer } from "@/components/transcript/TranscriptViewer";
 import type { Utterance } from "@/components/transcript/TranscriptViewer";
 import { SoapNoteEditor } from "@/components/soap/SoapNoteEditor";
 import type { SoapContent } from "@/components/soap/SoapNoteEditor";
+import { SoapWorkflowActions } from "@/components/soap/SoapWorkflowActions";
+import { useToast } from "@/components/ui/Toast";
 import { useApi } from "@/lib/api";
-import type { Session, AuditEvent } from "@/lib/types";
-import { FileText, ClipboardList, Loader2 } from "lucide-react";
+import type { Session, AuditEvent, SoapNote } from "@/lib/types";
+import { CheckCircle, FileText, ClipboardList, Loader2 } from "lucide-react";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -60,12 +62,16 @@ function AuditTimeline({ events }: { events: AuditEvent[] }) {
 
 export default function ActiveVisitPage() {
   const { id } = useParams<{ id: string }>();
-  const { get, post } = useApi();
+  const { get, post, put } = useApi();
+  const { showToast } = useToast();
 
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [transcribing, setTranscribing] = useState(false);
   const [generatingSoap, setGeneratingSoap] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  // Local edits to SOAP content (before saving)
+  const [soapEdits, setSoapEdits] = useState<SoapContent | null>(null);
 
   const fetchSession = useCallback(async () => {
     if (!id) return;
@@ -104,6 +110,60 @@ export default function ActiveVisitPage() {
     [post, id]
   );
 
+  // Sync local soap edits when session soap note changes
+  useEffect(() => {
+    if (session?.soapNote) {
+      setSoapEdits({
+        subjective: session.soapNote.subjective,
+        objective: session.soapNote.objective,
+        assessment: session.soapNote.assessment,
+        plan: session.soapNote.plan,
+      });
+    }
+  }, [session?.soapNote?.id]);
+
+  const handleSoapChange = useCallback((field: keyof SoapContent, value: string) => {
+    setSoapEdits((prev) => (prev ? { ...prev, [field]: value } : null));
+  }, []);
+
+  const handleSaveDraft = useCallback(async () => {
+    if (!id || !soapEdits) return;
+    setSavingDraft(true);
+    try {
+      const updated = await put<SoapNote>(`/sessions/${id}/soap-note`, soapEdits);
+      setSession((prev) => (prev ? { ...prev, soapNote: updated } : prev));
+      showToast("Draft saved successfully");
+    } catch {
+      showToast("Failed to save draft", "error");
+    } finally {
+      setSavingDraft(false);
+    }
+  }, [id, soapEdits, put, showToast]);
+
+  const handleRequestReview = useCallback(async () => {
+    if (!id) return;
+    try {
+      const updated = await post<SoapNote>(`/sessions/${id}/soap-note/submit-review`);
+      setSession((prev) => (prev ? { ...prev, soapNote: updated } : prev));
+      showToast("Note submitted for review");
+    } catch {
+      showToast("Failed to submit for review", "error");
+    }
+  }, [id, post, showToast]);
+
+  const handleApprove = useCallback(async () => {
+    if (!id) return;
+    try {
+      const updated = await post<SoapNote>(`/sessions/${id}/soap-note/approve`);
+      setSession((prev) =>
+        prev ? { ...prev, status: "COMPLETED", soapNote: updated } : prev
+      );
+      showToast("SOAP note approved and finalized");
+    } catch {
+      showToast("Failed to approve note", "error");
+    }
+  }, [id, post, showToast]);
+
   // Parse utterances from session transcript if present
   const utterances: Utterance[] = (() => {
     const raw = session?.transcript?.rawDiarizedText;
@@ -115,15 +175,7 @@ export default function ActiveVisitPage() {
     }
   })();
 
-  // Extract SOAP note content if present
-  const soapContent: SoapContent | null = session?.soapNote
-    ? {
-        subjective: session.soapNote.subjective,
-        objective: session.soapNote.objective,
-        assessment: session.soapNote.assessment,
-        plan: session.soapNote.plan,
-      }
-    : null;
+  const isApproved = session?.soapNote?.workflowStatus === "APPROVED";
 
   const auditEvents: AuditEvent[] = session?.auditEvents ?? [];
 
@@ -201,37 +253,49 @@ export default function ActiveVisitPage() {
 
         {/* SOAP note panel */}
         <section className="bg-white rounded-lg border border-slate-200 p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <ClipboardList className="w-4 h-4 text-slate-500" />
-            <h3 className="text-sm font-semibold text-slate-700">SOAP Note</h3>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-slate-500" />
+              <h3 className="text-sm font-semibold text-slate-700">SOAP Note</h3>
+            </div>
+            {isApproved && session?.soapNote?.approvedAt && (
+              <div
+                className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1"
+                data-testid="soap-approved-badge"
+              >
+                <CheckCircle className="w-3.5 h-3.5" />
+                <span>
+                  Approved{session.soapNote.approvedBy
+                    ? ` by ${session.soapNote.approvedBy.fullName}`
+                    : ""}
+                  {" · "}
+                  {new Date(session.soapNote.approvedAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </span>
+              </div>
+            )}
           </div>
           <SoapNoteEditor
-            note={soapContent}
+            note={soapEdits}
             loading={generatingSoap || transcribing}
+            readOnly={isApproved}
+            onChange={handleSoapChange}
           />
         </section>
 
-        {/* Action bar */}
-        <div className="flex items-center gap-3 pb-4">
-          <button
-            disabled
-            className="px-4 py-2 text-sm font-medium text-slate-400 bg-white border border-slate-200 rounded-md cursor-not-allowed"
-          >
-            Save Draft
-          </button>
-          <button
-            disabled
-            className="px-4 py-2 text-sm font-medium text-slate-400 bg-white border border-slate-200 rounded-md cursor-not-allowed"
-          >
-            Request Review
-          </button>
-          <button
-            disabled
-            className="px-4 py-2 text-sm font-medium text-slate-400 bg-white border border-slate-200 rounded-md cursor-not-allowed"
-          >
-            Sign &amp; Finalize
-          </button>
-        </div>
+        {/* Workflow action buttons */}
+        {session?.soapNote && (
+          <SoapWorkflowActions
+            workflowStatus={session.soapNote.workflowStatus}
+            saving={savingDraft}
+            onSaveDraft={handleSaveDraft}
+            onRequestReview={handleRequestReview}
+            onApprove={handleApprove}
+          />
+        )}
       </div>
     </AppLayout>
   );
