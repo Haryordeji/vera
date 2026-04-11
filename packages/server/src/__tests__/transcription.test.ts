@@ -33,6 +33,22 @@ vi.mock("assemblyai", () => ({
   })),
 }));
 
+// ---------------------------------------------------------------------------
+// Mock SoapGenerationService — transcribe endpoint auto-chains SOAP gen
+// ---------------------------------------------------------------------------
+const mockSoapGenerate = vi.fn().mockResolvedValue({
+  subjective: "Test subjective",
+  objective: "Test objective",
+  assessment: "Test assessment",
+  plan: "Test plan",
+});
+
+vi.mock("../services/soapGeneration", () => ({
+  SoapGenerationService: vi.fn().mockImplementation(() => ({
+    generate: mockSoapGenerate,
+  })),
+}));
+
 import { app } from "../index";
 import { PrismaClient } from "../generated/prisma/client";
 import { TranscriptionService } from "../services/transcription";
@@ -80,6 +96,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await prisma.soapNote.deleteMany({ where: { session: { physicianId } } });
   await prisma.transcript.deleteMany({ where: { sessionId } });
   await prisma.auditEvent.deleteMany({ where: { session: { physicianId } } });
   await prisma.session.deleteMany({ where: { physicianId } });
@@ -179,11 +196,11 @@ describe("POST /api/sessions/:id/transcribe", () => {
   ];
 
   beforeAll(() => {
-    // Configure env for the route (route checks for ASSEMBLYAI_API_KEY)
     process.env.ASSEMBLYAI_API_KEY = "test-key-for-route";
+    process.env.LLM_API_KEY = "test-llm-key"; // enables SOAP auto-chain
   });
 
-  it("creates a Transcript record and TRANSCRIPT_GENERATED audit event", async () => {
+  it("creates Transcript + SOAP note and transitions session to IN_REVIEW", async () => {
     mockTranscribe.mockResolvedValue({
       status: "completed",
       utterances: MOCK_UTTERANCES,
@@ -194,17 +211,25 @@ describe("POST /api/sessions/:id/transcribe", () => {
       .set(AUTH);
 
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe("GENERATING_NOTE");
+    // Pipeline chains: TRANSCRIBING → GENERATING_NOTE → IN_REVIEW
+    expect(res.body.status).toBe("IN_REVIEW");
     expect(res.body.transcript).toBeTruthy();
     expect(res.body.transcript.plainText).toContain("Doctor:");
     expect(res.body.transcript.plainText).toContain("Patient:");
+    // SOAP note auto-generated
+    expect(res.body.soapNote).toBeTruthy();
+    expect(res.body.soapNote.subjective).toBe("Test subjective");
 
-    // Audit event created
-    const events = await prisma.auditEvent.findMany({
+    // Audit events
+    const txEvent = await prisma.auditEvent.findFirst({
       where: { sessionId, eventType: "TRANSCRIPT_GENERATED" },
     });
-    expect(events.length).toBeGreaterThanOrEqual(1);
-    expect(events[0].author).toBe("System");
+    expect(txEvent?.author).toBe("System");
+
+    const soapEvent = await prisma.auditEvent.findFirst({
+      where: { sessionId, eventType: "SOAP_DRAFT_CREATED" },
+    });
+    expect(soapEvent?.author).toBe("AI Engine");
   });
 
   it("returns 400 when session has no audio file", async () => {

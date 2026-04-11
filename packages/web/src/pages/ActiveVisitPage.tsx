@@ -5,6 +5,8 @@ import { StatusBadge } from "@/components/visit/StatusBadge";
 import { AudioRecorder } from "@/components/audio/AudioRecorder";
 import { TranscriptViewer } from "@/components/transcript/TranscriptViewer";
 import type { Utterance } from "@/components/transcript/TranscriptViewer";
+import { SoapNoteEditor } from "@/components/soap/SoapNoteEditor";
+import type { SoapContent } from "@/components/soap/SoapNoteEditor";
 import { useApi } from "@/lib/api";
 import type { Session, AuditEvent } from "@/lib/types";
 import { FileText, ClipboardList, Loader2 } from "lucide-react";
@@ -63,6 +65,7 @@ export default function ActiveVisitPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [transcribing, setTranscribing] = useState(false);
+  const [generatingSoap, setGeneratingSoap] = useState(false);
 
   const fetchSession = useCallback(async () => {
     if (!id) return;
@@ -85,15 +88,17 @@ export default function ActiveVisitPage() {
       setSession(uploaded);
       if (!id) return;
 
-      // Auto-trigger transcription after successful upload
+      // Auto-trigger transcription — backend chains SOAP generation automatically
       setTranscribing(true);
+      setGeneratingSoap(false);
       try {
         const transcribed = await post<Session>(`/sessions/${id}/transcribe`);
         setSession(transcribed);
       } catch {
-        // Transcription failed — session still updated with TRANSCRIBING status
+        // Pipeline failed — session retains its last known status
       } finally {
         setTranscribing(false);
+        setGeneratingSoap(false);
       }
     },
     [post, id]
@@ -109,6 +114,16 @@ export default function ActiveVisitPage() {
       return [];
     }
   })();
+
+  // Extract SOAP note content if present
+  const soapContent: SoapContent | null = session?.soapNote
+    ? {
+        subjective: session.soapNote.subjective,
+        objective: session.soapNote.objective,
+        assessment: session.soapNote.assessment,
+        plan: session.soapNote.plan,
+      }
+    : null;
 
   const auditEvents: AuditEvent[] = session?.auditEvents ?? [];
 
@@ -190,20 +205,10 @@ export default function ActiveVisitPage() {
             <ClipboardList className="w-4 h-4 text-slate-500" />
             <h3 className="text-sm font-semibold text-slate-700">SOAP Note</h3>
           </div>
-          {(["Subjective", "Objective", "Assessment", "Plan"] as const).map(
-            (section) => (
-              <div key={section} className="mb-3 last:mb-0">
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
-                  {section}
-                </label>
-                <div className="h-12 bg-slate-50 rounded-md border border-dashed border-slate-200 flex items-center justify-center">
-                  <span className="text-xs text-slate-400">
-                    Generated in Phase 8
-                  </span>
-                </div>
-              </div>
-            )
-          )}
+          <SoapNoteEditor
+            note={soapContent}
+            loading={generatingSoap || transcribing}
+          />
         </section>
 
         {/* Action bar */}

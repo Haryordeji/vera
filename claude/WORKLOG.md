@@ -3,6 +3,37 @@
 ---
 
 ## 2026-04-10
+### Entry #8 — Phase 8: SOAP Note Generation
+
+LLM-powered SOAP note generation via OpenAI-compatible SDK (DeepSeek default), auto-chained after transcription. 123 total tests passing (79 server + 44 web).
+
+**Backend (`packages/server`):**
+- Installed `openai` SDK
+- `src/services/soapGeneration.ts` — `SoapGenerationService` class + exported `SOAP_SYSTEM_PROMPT`. Calls OpenAI-compatible API with `response_format: { type: "json_object" }`. Retries once on `SyntaxError` (malformed JSON); throws `"SOAP generation failed after retry"` if both attempts fail. Validates all 4 fields present.
+- `POST /api/sessions/:id/generate-soap` — validates transcript exists, calls service, upserts `SoapNote`, updates session to `IN_REVIEW`, creates `SOAP_DRAFT_CREATED` audit event. Returns populated session.
+- `POST /api/sessions/:id/transcribe` — now auto-chains SOAP generation if `LLM_API_KEY` is set. Returns session in `IN_REVIEW` with both `transcript` and `soapNote` populated.
+
+**Frontend (`packages/web`):**
+- `src/components/soap/SoapNoteEditor.tsx` — four color-coded sections (blue/green/yellow/purple). Loading spinner state, empty placeholder state, editable textareas with local state synced from prop via `useEffect`. `onChange(field, value)` callback.
+- `src/pages/ActiveVisitPage.tsx` — extracts `soapContent` from `session.soapNote`, passes to `SoapNoteEditor` with `loading={generatingSoap || transcribing}`.
+
+**Tests:**
+- `packages/server/src/__tests__/soapGeneration.test.ts` — 11 tests: 4 SOAP fields returned, system prompt sent, transcript in user message, `json_object` format, retry on malformed JSON (2 calls), throw after 2 failures, throw on missing fields; endpoint: creates SoapNote + audit event + IN_REVIEW, 400 no transcript, 404 bad session, 401 no auth.
+- `packages/server/src/__tests__/transcription.test.ts` — updated: mocks `SoapGenerationService`, expects `IN_REVIEW` status + `soapNote` in response.
+- `packages/web/src/__tests__/soapNoteEditor.test.tsx` — 9 tests: loading/empty/content states, 4 section labels, textarea values, onChange callback, local state update.
+
+**Key files:**
+- `packages/server/src/services/soapGeneration.ts`
+- `packages/server/src/routes/sessions.ts` (generate-soap route + transcribe chain)
+- `packages/server/src/__tests__/soapGeneration.test.ts`
+- `packages/server/src/__tests__/transcription.test.ts` (updated)
+- `packages/web/src/components/soap/SoapNoteEditor.tsx`
+- `packages/web/src/pages/ActiveVisitPage.tsx`
+- `packages/web/src/__tests__/soapNoteEditor.test.tsx`
+
+---
+
+## 2026-04-10
 ### Entry #7 — Phase 7: Transcription Pipeline
 
 AssemblyAI transcription with speaker diarization wired end-to-end. 123 total tests passing (68 server + 55 web).
