@@ -3,14 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { VisitCard } from "@/components/visit/VisitCard";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 import { useApi } from "@/lib/api";
 import type { Session } from "@/lib/types";
-import { ClipboardList, Plus, Clock, CheckCircle2, Loader2 } from "lucide-react";
+import { ClipboardList, Plus, Clock, CheckCircle2 } from "lucide-react";
 
 export default function DashboardPage() {
   const { get } = useApi();
   const navigate = useNavigate();
   const { user } = useUser();
+  const { showToast } = useToast();
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,9 +21,9 @@ export default function DashboardPage() {
   useEffect(() => {
     get<Session[]>("/sessions")
       .then(setSessions)
-      .catch(console.error)
+      .catch(() => showToast("Failed to load visits", "error"))
       .finally(() => setLoading(false));
-  }, [get]);
+  }, [get]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -79,8 +82,13 @@ export default function DashboardPage() {
           </div>
 
           {loading ? (
-            <div className="flex justify-center py-10">
-              <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="bg-white rounded-lg border border-slate-200 px-4 py-3 flex items-center gap-4">
+                  <Skeleton className="w-full h-5" />
+                  <Skeleton className="w-24 h-5 shrink-0" />
+                </div>
+              ))}
             </div>
           ) : recentSessions.length === 0 ? (
             <div className="bg-blue-50 border border-blue-100 rounded-lg px-6 py-8 text-center">
@@ -127,9 +135,13 @@ function StatCard({
         <span className="text-sm text-slate-500">{label}</span>
         <Icon className="w-4 h-4 text-slate-300" />
       </div>
-      <p className="mt-2 text-2xl font-semibold text-slate-800">
-        {loading ? <span className="text-slate-300">—</span> : value}
-      </p>
+      <div className="mt-2 h-8 flex items-center">
+        {loading ? (
+          <Skeleton className="w-8 h-7" />
+        ) : (
+          <p className="text-2xl font-semibold text-slate-800">{value}</p>
+        )}
+      </div>
     </div>
   );
 }

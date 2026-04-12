@@ -12,7 +12,7 @@ import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import { useToast } from "@/components/ui/Toast";
 import { useApi } from "@/lib/api";
 import type { Session, AuditEvent, SoapNote } from "@/lib/types";
-import { CheckCircle, FileText, ClipboardList, Loader2 } from "lucide-react";
+import { CheckCircle, FileText, ClipboardList, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -35,8 +35,12 @@ export default function ActiveVisitPage() {
   const [transcribing, setTranscribing] = useState(false);
   const [generatingSoap, setGeneratingSoap] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
+  const [soapError, setSoapError] = useState<string | null>(null);
   // Local edits to SOAP content (before saving)
   const [soapEdits, setSoapEdits] = useState<SoapContent | null>(null);
+  // Track last uploaded session for retry
+  const [lastUploadedSession, setLastUploadedSession] = useState<Session | null>(null);
 
   const fetchAuditEvents = useCallback(async () => {
     if (!id) return;
@@ -65,27 +69,41 @@ export default function ActiveVisitPage() {
     fetchSession();
   }, [fetchSession]);
 
-  const handleUploadComplete = useCallback(
-    async (uploaded: Session) => {
-      setSession(uploaded);
+  const runTranscription = useCallback(
+    async (uploadedSession: Session) => {
       if (!id) return;
-
-      // Auto-trigger transcription — backend chains SOAP generation automatically
       setTranscribing(true);
-      setGeneratingSoap(false);
+      setTranscriptionError(null);
+      setSoapError(null);
       try {
         const transcribed = await post<Session>(`/sessions/${id}/transcribe`);
         setSession(transcribed);
         if (transcribed?.auditEvents) setAuditEvents(transcribed.auditEvents);
       } catch {
-        // Pipeline failed — session retains its last known status
+        setTranscriptionError("Transcription failed. Please try again.");
+        setSession(uploadedSession);
+        showToast("Transcription failed", "error");
       } finally {
         setTranscribing(false);
-        setGeneratingSoap(false);
       }
     },
-    [post, id]
+    [post, id, showToast]
   );
+
+  const handleUploadComplete = useCallback(
+    async (uploaded: Session) => {
+      setSession(uploaded);
+      setLastUploadedSession(uploaded);
+      await runTranscription(uploaded);
+    },
+    [runTranscription]
+  );
+
+  const handleRetryTranscription = useCallback(() => {
+    if (lastUploadedSession) {
+      runTranscription(lastUploadedSession);
+    }
+  }, [lastUploadedSession, runTranscription]);
 
   // Sync local soap edits when session soap note changes
   useEffect(() => {
@@ -224,7 +242,24 @@ export default function ActiveVisitPage() {
             <FileText className="w-4 h-4 text-slate-500" />
             <h3 className="text-sm font-semibold text-slate-700">Transcript</h3>
           </div>
-          <TranscriptViewer utterances={utterances} loading={transcribing} />
+          {transcriptionError ? (
+            <div
+              className="flex flex-col items-center justify-center py-8 gap-3 text-center"
+              data-testid="transcript-error"
+            >
+              <AlertCircle className="w-8 h-8 text-red-400" />
+              <p className="text-sm text-slate-600">{transcriptionError}</p>
+              <button
+                onClick={handleRetryTranscription}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Retry Transcription
+              </button>
+            </div>
+          ) : (
+            <TranscriptViewer utterances={utterances} loading={transcribing} />
+          )}
         </section>
 
         {/* SOAP note panel */}
@@ -254,12 +289,44 @@ export default function ActiveVisitPage() {
               </div>
             )}
           </div>
-          <SoapNoteEditor
-            note={soapEdits}
-            loading={generatingSoap || transcribing}
-            readOnly={isApproved}
-            onChange={handleSoapChange}
-          />
+          {soapError && !session?.soapNote ? (
+            <div
+              className="flex flex-col items-center justify-center py-8 gap-3 text-center"
+              data-testid="soap-error"
+            >
+              <AlertCircle className="w-8 h-8 text-red-400" />
+              <p className="text-sm text-slate-600">{soapError}</p>
+              {id && (
+                <button
+                  onClick={async () => {
+                    setSoapError(null);
+                    setGeneratingSoap(true);
+                    try {
+                      const updated = await post<Session>(`/sessions/${id}/generate-soap`);
+                      setSession(updated);
+                      if (updated?.auditEvents) setAuditEvents(updated.auditEvents);
+                    } catch {
+                      setSoapError("SOAP generation failed. Please try again.");
+                      showToast("SOAP generation failed", "error");
+                    } finally {
+                      setGeneratingSoap(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Retry SOAP Generation
+                </button>
+              )}
+            </div>
+          ) : (
+            <SoapNoteEditor
+              note={soapEdits}
+              loading={generatingSoap || transcribing}
+              readOnly={isApproved}
+              onChange={handleSoapChange}
+            />
+          )}
         </section>
 
         {/* Workflow action buttons */}

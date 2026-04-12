@@ -98,9 +98,10 @@ describe("AuditTimeline — event rendering", () => {
 
   it("shows author for each event", () => {
     render(<AuditTimeline events={SAMPLE_EVENTS} />);
-    expect(screen.getAllByText("Dr. Smith").length).toBeGreaterThan(0);
-    expect(screen.getByText("System")).toBeInTheDocument();
-    expect(screen.getByText("AI Engine")).toBeInTheDocument();
+    // Author text is embedded in "HH:MM · Author" — use regex to find partial matches
+    expect(screen.getAllByText(/Dr\. Smith/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/System/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/AI Engine/).length).toBeGreaterThan(0);
   });
 
   it("renders an icon for each event type", () => {

@@ -9,6 +9,7 @@ import {
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthSync } from "./components/AuthSync";
 import { ToastProvider } from "./components/ui/Toast";
+import { AuthLayout } from "./components/layout/AuthLayout";
 import DashboardPage from "./pages/DashboardPage";
 import NewVisitPage from "./pages/NewVisitPage";
 import ActiveVisitPage from "./pages/ActiveVisitPage";
@@ -41,14 +42,22 @@ export default function App() {
       <ToastProvider>
       <BrowserRouter>
         <Routes>
-          {/* Clerk-hosted auth pages */}
+          {/* Clerk-hosted auth pages — wrapped with branded layout */}
           <Route
             path="/sign-in/*"
-            element={<SignIn routing="path" path="/sign-in" />}
+            element={
+              <AuthLayout>
+                <SignIn routing="path" path="/sign-in" />
+              </AuthLayout>
+            }
           />
           <Route
             path="/sign-up/*"
-            element={<SignUp routing="path" path="/sign-up" />}
+            element={
+              <AuthLayout>
+                <SignUp routing="path" path="/sign-up" />
+              </AuthLayout>
+            }
           />
 
           {/* All authenticated routes */}

@@ -77,7 +77,8 @@ describe("SoapWorkflowActions — Request Review dialog", () => {
     );
     fireEvent.click(screen.getByTestId("btn-request-review"));
     expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument();
-    expect(screen.getByText("Submit for Review")).toBeInTheDocument();
+    // Title and confirm button both say "Submit for Review" — use heading role to disambiguate
+    expect(screen.getByRole("heading", { name: "Submit for Review" })).toBeInTheDocument();
   });
 
   it("calls onRequestReview when confirm is clicked", () => {

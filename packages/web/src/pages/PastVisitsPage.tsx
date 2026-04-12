@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { VisitCard } from "@/components/visit/VisitCard";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 import { useApi } from "@/lib/api";
 import type { Session, SessionStatus } from "@/lib/types";
-import { Clock, Search, Loader2, SlidersHorizontal } from "lucide-react";
+import { Clock, Search, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const STATUS_FILTERS: { label: string; value: SessionStatus | "ALL" }[] = [
@@ -15,6 +17,7 @@ const STATUS_FILTERS: { label: string; value: SessionStatus | "ALL" }[] = [
 
 export default function PastVisitsPage() {
   const { get } = useApi();
+  const { showToast } = useToast();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -23,9 +26,9 @@ export default function PastVisitsPage() {
   useEffect(() => {
     get<Session[]>("/sessions")
       .then(setSessions)
-      .catch(console.error)
+      .catch(() => showToast("Failed to load visits", "error"))
       .finally(() => setLoading(false));
-  }, [get]);
+  }, [get]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => {
     return sessions.filter((s) => {
@@ -83,8 +86,16 @@ export default function PastVisitsPage() {
 
         {/* Session list */}
         {loading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
+          <div className="space-y-2">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="bg-white rounded-lg border border-slate-200 px-4 py-3 flex items-center gap-4">
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-28" />
+                </div>
+                <Skeleton className="h-5 w-20 shrink-0" />
+              </div>
+            ))}
           </div>
         ) : filtered.length === 0 ? (
           <div className="bg-white rounded-lg border border-slate-200 px-5 py-16 text-center">

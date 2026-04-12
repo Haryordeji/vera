@@ -69,7 +69,8 @@ async function renderAt(element: React.ReactElement, initialPath = "/") {
 describe("Page components render", () => {
   it("DashboardPage shows welcome heading and CTA", async () => {
     await renderAt(<DashboardPage />);
-    expect(screen.getByText("Good morning")).toBeInTheDocument();
+    // Greeting is time-dependent ("Good morning" / "Good afternoon" / "Good evening")
+    expect(screen.getByText(/Good (morning|afternoon|evening)/)).toBeInTheDocument();
     // Sidebar always shows "Start New Visit"; body CTA shows when no sessions
     expect(screen.getAllByText("Start New Visit").length).toBeGreaterThanOrEqual(1);
   });
