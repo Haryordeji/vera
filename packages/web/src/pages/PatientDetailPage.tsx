@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, Link } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { useParams } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { usePatient } from "@/hooks/usePatient";
@@ -56,13 +56,11 @@ export default function PatientDetailPage() {
   return (
     <AppLayout title={patient?.fullName ?? "Patient Detail"}>
       <div className="px-6 py-6 max-w-6xl mx-auto">
-        <Link
-          to="/patients"
-          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 mb-4"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to patients
-        </Link>
+        <PageHeader
+          title={patient?.fullName ?? "Patient Detail"}
+          backTo="/patients"
+          backLabel="Back to Patients"
+        />
 
         {loading ? (
           <div

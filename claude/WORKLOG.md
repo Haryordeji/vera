@@ -3,6 +3,49 @@
 ---
 
 ## 2026-04-15
+### Entry #23 — UX Fixes (Issue 1): PageHeader Back Navigation
+
+First slice of `claude/ux-fixes-1-spec.md`. Adds a contextual back button to every detail page via a shared `PageHeader` component, so drilling into a visit or patient no longer leaves you reaching for the browser back button.
+
+**New component — `components/layout/PageHeader.tsx`:**
+- Props: `title: string`, `backTo?: string` (path or the literal `"history"`), `backLabel?: string`, `children?: ReactNode` (right-side action slot).
+- When `backTo` is set, renders a compact left-arrow button above the title. `"history"` → `navigate(-1)`, anything else → `navigate(backTo)`. When `backTo` is omitted the button is not rendered at all (so the same component works in contexts where only the title is needed).
+- Title is an `h2` at `text-2xl font-semibold`, with children (e.g. a status badge) pinned to the right. `data-testid`s: `page-header`, `page-header-back`.
+- Lives in `layout/` alongside `AppLayout` / `Sidebar` since it's a chrome element, not a domain component.
+
+**Page wiring:**
+- `PatientDetailPage` — replaced the inline `Link` + `ArrowLeft` + "Back to patients" block with `<PageHeader title={patient?.fullName ?? "Patient Detail"} backTo="/patients" backLabel="Back to Patients" />`. Dropped the now-unused `Link` / `ArrowLeft` imports.
+- `ActiveVisitPage` — replaced the inline visit-header div with `<PageHeader title={patient?.fullName ?? "Unknown Patient"} backTo="history" backLabel="Back">{status && <StatusBadge />}</PageHeader>` and kept the recorded-at timestamp as a small line directly below. Uses browser history (`navigate(-1)`) because this page is reachable from Dashboard, Past Visits, and Patient Detail — returning to wherever the user came from is more useful than any single fixed target.
+- `NewVisitPage` — swapped the hand-rolled `h2 "New Visit"` for `<PageHeader title="New Visit" backTo="/" backLabel="Back to Dashboard" />`. Subtitle copy ("Select an existing patient…") stays, nudged up with a `-mt-3` so it still tucks under the title.
+- Not touched: `DashboardPage`, `PatientListPage`, `PastVisitsPage`, `SettingsPage`. These are top-level sidebar destinations — a back button on them would land nowhere meaningful.
+
+**Tests — `pageHeader.test.tsx` (6):**
+- Follows the `patientDetail.test.tsx` mocking pattern: hoisted `mockNavigate` + partial `react-router-dom` mock overriding only `useNavigate`. The component is rendered inside `MemoryRouter`.
+- Cases:
+  1. Title renders.
+  2. Back button with the given label renders when `backTo` is set.
+  3. Back button is absent when `backTo` is omitted.
+  4. Clicking the back button with a path calls `navigate("/patients")`.
+  5. Clicking the back button with `backTo="history"` calls `navigate(-1)`.
+  6. `children` render in the right-side action slot.
+
+**Notes:**
+- Verified no existing test asserts the old "Back to patients" link copy, so no test updates needed elsewhere.
+- `routing.test.tsx:81` still matches (`heading level 2, name /new visit/i`) — PageHeader's h2 preserves it.
+
+**Files touched:**
+- `packages/web/src/components/layout/PageHeader.tsx` (new)
+- `packages/web/src/pages/PatientDetailPage.tsx` (use PageHeader, drop inline back link)
+- `packages/web/src/pages/ActiveVisitPage.tsx` (use PageHeader with StatusBadge slot)
+- `packages/web/src/pages/NewVisitPage.tsx` (use PageHeader)
+- `packages/web/src/__tests__/pageHeader.test.tsx` (new, 6 tests)
+- `CLAUDE.md`
+
+Web test suite run skipped per standing instruction — will be verified manually.
+
+---
+
+## 2026-04-15
 ### Entry #22 — Dashboard & Cross-Physician Visibility: Final Polish
 
 Wraps up `claude/dashboard-visibility-feat.md`. The four core slices (Entries #18 backend, #19 dashboard, #20 past visits, #21 read-only) shipped last week. This entry is the finalization pass: empty-state copy, a sidebar count badge, and an end-to-end audit of the cross-physician flow.

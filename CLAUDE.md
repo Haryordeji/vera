@@ -28,6 +28,14 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
+**UX Fixes (Issue 1) — PageHeader back navigation — COMPLETE** (`claude/ux-fixes-1-spec.md` §1):
+- ✅ New `components/layout/PageHeader.tsx`: props `title`, optional `backTo` (path or `"history"`), optional `backLabel`, optional `children` (right-side action slot). Renders a left-arrow back button above the title when `backTo` is set; `"history"` calls `navigate(-1)`, otherwise `navigate(backTo)`. `data-testid="page-header"` + `"page-header-back"`.
+- ✅ `PatientDetailPage` — `backTo="/patients"`, label "Back to Patients". Replaces the old inline `Link` + `ArrowLeft` block.
+- ✅ `ActiveVisitPage` — `backTo="history"`, label "Back" (uses browser history since you can arrive from Dashboard, Past Visits, or Patient Detail). `StatusBadge` is slotted into the header's right-side `children`. Recorded-at timestamp kept under the header.
+- ✅ `NewVisitPage` — `backTo="/"`, label "Back to Dashboard".
+- ✅ Top-level nav pages (`/`, `/patients`, `/visits`, `/settings`) intentionally do **not** use `PageHeader` — no back button, since they're reachable directly from the sidebar.
+- ✅ Tests (`pageHeader.test.tsx`, 6): title renders, back button appears when `backTo` set, back button hidden when `backTo` omitted, `navigate("/patients")` on path click, `navigate(-1)` on `"history"` click, children render in the action slot.
+
 **Dashboard & Cross-Physician Visibility feature — FINALIZED** (`claude/dashboard-visibility-feat.md`):
 - ✅ `Sidebar` now fetches `/sessions?scope=mine` on mount and displays a small active-session badge on the Dashboard nav item when there are any non-`COMPLETED` sessions. Badge is omitted silently when count is 0 or the fetch fails.
 - ✅ Dashboard empty state rewritten: "All caught up! No sessions need your attention." with an inline Start New Visit button (`data-testid="dashboard-empty-cta"`). Replaces the older "No active sessions" copy.

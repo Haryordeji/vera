@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { StatusBadge } from "@/components/visit/StatusBadge";
 import { AudioRecorder } from "@/components/audio/AudioRecorder";
 import { TranscriptViewer } from "@/components/transcript/TranscriptViewer";
@@ -231,18 +232,16 @@ export default function ActiveVisitPage() {
   return (
     <AppLayout title="Active Visit" rightPanel={rightPanel}>
       <div className="px-6 py-6 space-y-6 max-w-3xl mx-auto">
-        {/* Visit header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-900">
-              {session?.patient?.fullName ?? "Unknown Patient"}
-            </h2>
-            <p className="text-sm text-slate-500 mt-0.5">
-              {session?.recordedAt ? formatDate(session.recordedAt) : "—"}
-            </p>
-          </div>
+        <PageHeader
+          title={session?.patient?.fullName ?? "Unknown Patient"}
+          backTo="history"
+          backLabel="Back"
+        >
           {session?.status && <StatusBadge status={session.status} />}
-        </div>
+        </PageHeader>
+        <p className="-mt-3 text-sm text-slate-500">
+          {session?.recordedAt ? formatDate(session.recordedAt) : "—"}
+        </p>
 
         {showOwnershipBanner && session?.physician && (
           <OwnershipBanner physicianName={session.physician.fullName} />

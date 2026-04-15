@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { useApi } from "@/lib/api";
 import type { Patient, Session } from "@/lib/types";
 import { Search, UserRound, Plus, X, Loader2, ChevronRight } from "lucide-react";
@@ -126,8 +127,12 @@ export default function NewVisitPage() {
     <AppLayout title="New Visit">
       <div className="px-6 py-6 max-w-2xl mx-auto space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold text-slate-900">New Visit</h2>
-          <p className="mt-1 text-slate-500">
+          <PageHeader
+            title="New Visit"
+            backTo="/"
+            backLabel="Back to Dashboard"
+          />
+          <p className="-mt-3 text-slate-500">
             Select an existing patient or create a new one to begin.
           </p>
         </div>
