@@ -224,12 +224,12 @@ describe("GET /api/sessions/:id", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 403 when session belongs to another physician", async () => {
+  it("returns 200 when viewing a session owned by another physician (practice-wide read)", async () => {
     const otherPhysician = await prisma.physician.create({
       data: {
-        clerkId: `403_test_${Date.now()}`,
-        fullName: "Forbidden Doc",
-        email: `forbidden.${Date.now()}@vera.test`,
+        clerkId: `read_test_${Date.now()}`,
+        fullName: "Other Reader Doc",
+        email: `reader.${Date.now()}@vera.test`,
       },
     });
     const otherSession = await prisma.session.create({
@@ -239,7 +239,11 @@ describe("GET /api/sessions/:id", () => {
     const res = await request(app)
       .get(`/api/sessions/${otherSession.id}`)
       .set(AUTH);
-    expect(res.status).toBe(403);
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(otherSession.id);
+    expect(res.body.physician.id).toBe(otherPhysician.id);
+    expect(res.body.physician.fullName).toBe("Other Reader Doc");
 
     await prisma.session.delete({ where: { id: otherSession.id } });
     await prisma.physician.delete({ where: { id: otherPhysician.id } });

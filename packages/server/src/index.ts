@@ -4,6 +4,7 @@ import cors from "cors";
 import { clerkInit, requireAuthMiddleware } from "./middleware/auth";
 import authRouter from "./routes/auth";
 import patientsRouter from "./routes/patients";
+import physiciansRouter from "./routes/physicians";
 import sessionsRouter from "./routes/sessions";
 import vitalsRouter from "./routes/vitals";
 
@@ -26,6 +27,7 @@ app.use(requireAuthMiddleware);
 // Routes
 app.use("/api/auth", authRouter);
 app.use("/api/patients", patientsRouter);
+app.use("/api/physicians", physiciansRouter);
 app.use("/api/sessions/:id/vitals", vitalsRouter);
 app.use("/api/sessions", sessionsRouter);
 

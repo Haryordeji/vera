@@ -3,6 +3,72 @@
 ---
 
 ## 2026-04-14
+### Entry #18 — Cross-Physician Visibility: Backend (scoped queries + ownership writes)
+
+Backend slice of `claude/dashboard-visibility-feat.md` — opens up read access practice-wide while keeping writes owner-scoped. Frontend changes (dashboard redesign, past visits redesign, ownership banner) are not part of this entry.
+
+**New helper (`packages/server/src/lib/requireSessionOwner.ts`):**
+- `requireSessionOwner(sessionId, physicianId)` → `{ ok: true, session } | { ok: false, status: 404 | 403, error }`. Thin async wrapper around a `select: { id, physicianId }` lookup. Non-owner returns the standardized message `"You can only modify sessions you created"` so the frontend can render a consistent error.
+
+**`GET /api/sessions` — scoped queries (`packages/server/src/routes/sessions.ts`):**
+- `?scope=mine` (default): `where.physicianId = currentPhysician.id`. Matches the pre-existing dashboard behavior.
+- `?scope=all`: no physician scoping; optional `?physician=<id>` narrows to a specific owner.
+- `?search=<text>`: Postgres case-insensitive partial match on `patient.fullName` OR `patient.mrn` via Prisma's `{ contains, mode: "insensitive" }`.
+- Existing `?status=` filter works with both scopes (unchanged validation).
+- Every response row includes `physician: { id, fullName }` so the past-visits UI can display ownership without a second fetch.
+- Invalid `scope` value → 400.
+
+**`GET /api/sessions/:id` — practice-wide read:**
+- Removed the old `session.physicianId !== physician.id → 403` check. Any authenticated physician can now view any session's full detail (patient, transcript, SOAP note, vitals, audit events).
+- Physician include switched to `select: { id, fullName, credentials }` so the frontend ownership banner has everything it needs.
+- `GET /api/sessions/:id/audit-events` also opened up (practice-wide read per spec — "View any audit trail").
+
+**Ownership checks on write endpoints:**
+All of the following now call `requireSessionOwner` and return `403 { error: "You can only modify sessions you created" }` on non-owner:
+- `POST /api/sessions/:id/upload-audio` (also deletes the uploaded multer file on 403/404)
+- `POST /api/sessions/:id/transcribe`
+- `POST /api/sessions/:id/generate-soap`
+- `PUT /api/sessions/:id/soap-note`
+- `POST /api/sessions/:id/soap-note/submit-review`
+- `POST /api/sessions/:id/soap-note/approve`
+- `POST /api/sessions/:id/vitals` (via `loadAuthorizedSession` in `routes/vitals.ts`)
+- `PUT /api/sessions/:id/vitals` (same)
+
+The vitals router's existing `loadAuthorizedSession` helper was refactored to delegate to `requireSessionOwner` so the error shape is consistent across routers.
+
+**New endpoint — `GET /api/physicians` (`packages/server/src/routes/physicians.ts`):**
+- Returns `[{ id, fullName }]` ordered by fullName. Used by the physician filter dropdown on the Past Visits page. Registered in `index.ts`; requires auth via the existing global Clerk middleware. No sensitive fields exposed.
+
+**Test updates:**
+- `sessions.test.ts` — flipped the "returns 403 when session belongs to another physician" case on `GET /:id` to a new assertion that cross-physician read returns 200 with the other physician's fullName/id in the response.
+- `auditEvents.test.ts` — same flip: the "other physician" case now asserts 200 with an array body.
+
+**New test file — `crossPhysicianVisibility.test.ts` (25 tests):**
+- Sets up two physicians (`Owner Doc`, `Other Doc`) and two patients (`Sarah Johnson`, `Maria Garcia`) plus DRAFT/PENDING_REVIEW soap-note sessions owned by each.
+- `GET /api/sessions` scope tests: default=mine, explicit scope=mine, scope=all (both physicians), scope=all&physician=<id>, scope=all&search=johnson (case-insensitive), scope=all&search=Garcia, status filter with scope=all, invalid scope → 400, recordedAt ordering desc.
+- `GET /api/sessions/:id` cross-physician read — asserts 200 + physician relation has id/fullName/credentials.
+- Non-owner 403 probes for every write endpoint (8 endpoints) — all assert both status 403 and the exact error string.
+- Owner happy-path assertions for `PUT /soap-note`, `submit-review`, `approve`, `POST /vitals`, `PUT /vitals` (the other owner paths are already covered in `sessions.test.ts` and `soapWorkflow.test.ts`).
+- `GET /api/physicians` — returns array with both physicians, each row has exactly `{ id, fullName }`, and 401 without auth.
+
+**Suite status:** **154/154 passing** across 12 test files (`npx vitest run` in `packages/server`, ~5.4s). No existing tests broken.
+
+**Files touched:**
+- `packages/server/src/lib/requireSessionOwner.ts` (new)
+- `packages/server/src/routes/sessions.ts`
+- `packages/server/src/routes/vitals.ts`
+- `packages/server/src/routes/physicians.ts` (new)
+- `packages/server/src/index.ts`
+- `packages/server/src/__tests__/sessions.test.ts`
+- `packages/server/src/__tests__/auditEvents.test.ts`
+- `packages/server/src/__tests__/crossPhysicianVisibility.test.ts` (new)
+- `CLAUDE.md`
+
+Next up on this feature: frontend dashboard/past-visits redesign, ownership banner, and disabling edit controls when viewing another physician's session.
+
+---
+
+## 2026-04-14
 ### Entry #17 — Enhanced Patient Management: Final Polish, Cross-Linking, Clean Seed
 
 Closing phase of the feature — cross-surface polish, cleaner demo data, and a few rough-edge fixes discovered while preparing to demo.

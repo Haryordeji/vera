@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { getAuth } from "@clerk/express";
 import { prisma } from "../lib/prisma";
 import { getPhysician } from "../lib/getPhysician";
+import { requireSessionOwner } from "../lib/requireSessionOwner";
 
 const router = Router({ mergeParams: true });
 
@@ -43,20 +44,13 @@ async function loadAuthorizedSession(
     return null;
   }
 
-  const sessionId = req.params.id;
-  const session = await prisma.session.findUnique({ where: { id: sessionId } });
-
-  if (!session) {
-    res.status(404).json({ error: "Session not found" });
+  const ownership = await requireSessionOwner(req.params.id, physician.id);
+  if (!ownership.ok) {
+    res.status(ownership.status).json({ error: ownership.error });
     return null;
   }
 
-  if (session.physicianId !== physician.id) {
-    res.status(403).json({ error: "Forbidden" });
-    return null;
-  }
-
-  return { sessionId: session.id, physicianName: physician.fullName };
+  return { sessionId: ownership.session.id, physicianName: physician.fullName };
 }
 
 /** POST /api/sessions/:id/vitals — record vitals */

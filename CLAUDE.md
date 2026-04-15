@@ -28,6 +28,13 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
+**Cross-physician visibility (backend) — COMPLETE** (`claude/dashboard-visibility-feat.md`):
+- ✅ `GET /api/sessions` accepts `?scope=mine` (default) / `?scope=all`, plus `?physician=<id>` and `?search=` (case-insensitive patient fullName / mrn). Existing `?status=` filter still works with both scopes. When `scope=all`, response includes `physician: { id, fullName }`.
+- ✅ `GET /api/sessions/:id` is practice-wide read — any authenticated physician can view any session. Response includes `physician: { id, fullName, credentials }`.
+- ✅ `GET /api/sessions/:id/audit-events` is also practice-wide read.
+- ✅ Ownership enforcement for writes via `lib/requireSessionOwner.ts` helper. Applied to: upload-audio, transcribe, generate-soap, PUT soap-note, submit-review, approve, POST vitals, PUT vitals. Non-owner returns `403 { error: "You can only modify sessions you created" }`.
+- ✅ New `GET /api/physicians` endpoint returns `[{ id, fullName }]` for filter dropdowns.
+
 **Enhanced Patient Management feature — COMPLETE** (`claude/patient-page-feat-spec.md`):
 - ✅ Database: `Patient` expanded (sex, heightCm, eyeColor, bloodType); new `Allergy`, `Medication`, `Vitals` models; cascade delete on patient relations; Vitals one-to-one with Session.
 - ✅ Seed: 6 demo patients with full profiles + realistic allergies + medications. No fake visits/transcripts/SOAP notes — those only come from real usage since they need authentic audio.

@@ -161,7 +161,7 @@ describe("GET /api/sessions/:id/audit-events", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 403 for a session belonging to another physician", async () => {
+  it("returns 200 for a session belonging to another physician (practice-wide read)", async () => {
     const other = await prisma.physician.create({
       data: {
         clerkId: `other_${Date.now()}`,
@@ -177,7 +177,8 @@ describe("GET /api/sessions/:id/audit-events", () => {
       .get(`/api/sessions/${otherSession.id}/audit-events`)
       .set(AUTH); // authenticated as TEST_CLERK_ID, not other doctor
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
 
     await prisma.session.delete({ where: { id: otherSession.id } });
     await prisma.physician.delete({ where: { id: other.id } });

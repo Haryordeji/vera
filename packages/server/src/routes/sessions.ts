@@ -5,6 +5,7 @@ import multer from "multer";
 import { getAuth } from "@clerk/express";
 import { prisma } from "../lib/prisma";
 import { getPhysician } from "../lib/getPhysician";
+import { requireSessionOwner } from "../lib/requireSessionOwner";
 import { SessionStatus, WorkflowStatus } from "../generated/prisma/enums";
 import { TranscriptionService } from "../services/transcription";
 import { SoapGenerationService } from "../services/soapGeneration";
@@ -74,7 +75,16 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-/** GET /api/sessions — list sessions for the authenticated physician */
+/**
+ * GET /api/sessions — list sessions.
+ *
+ * Query params:
+ *   scope=mine (default) → only the current physician's sessions
+ *   scope=all            → sessions from all physicians (practice-wide)
+ *   physician=<id>       → when scope=all, filter to a specific physician
+ *   search=<text>        → filter by patient fullName or mrn (case-insensitive)
+ *   status=<SessionStatus> → filter by status
+ */
 router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { userId } = getAuth(req);
@@ -89,22 +99,51 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       return;
     }
 
-    const statusFilter = req.query.status as string | undefined;
-    const validStatuses = Object.values(SessionStatus) as string[];
-
-    if (statusFilter && !validStatuses.includes(statusFilter)) {
-      res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+    const scopeParam = (req.query.scope as string | undefined) ?? "mine";
+    if (scopeParam !== "mine" && scopeParam !== "all") {
+      res.status(400).json({ error: "Invalid scope. Must be 'mine' or 'all'." });
       return;
     }
 
+    const statusFilter = req.query.status as string | undefined;
+    const validStatuses = Object.values(SessionStatus) as string[];
+    if (statusFilter && !validStatuses.includes(statusFilter)) {
+      res.status(400).json({
+        error: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+      });
+      return;
+    }
+
+    const physicianFilter = req.query.physician as string | undefined;
+    const searchRaw = req.query.search as string | undefined;
+    const search = searchRaw?.trim();
+
+    const where: Record<string, unknown> = {};
+
+    if (scopeParam === "mine") {
+      where.physicianId = physician.id;
+    } else if (physicianFilter) {
+      where.physicianId = physicianFilter;
+    }
+
+    if (statusFilter) {
+      where.status = statusFilter as SessionStatus;
+    }
+
+    if (search) {
+      where.patient = {
+        OR: [
+          { fullName: { contains: search, mode: "insensitive" } },
+          { mrn: { contains: search, mode: "insensitive" } },
+        ],
+      };
+    }
+
     const sessions = await prisma.session.findMany({
-      where: {
-        physicianId: physician.id,
-        ...(statusFilter ? { status: statusFilter as SessionStatus } : {}),
-      },
+      where,
       include: {
         patient: true,
-        physician: { select: { fullName: true } },
+        physician: { select: { id: true, fullName: true } },
       },
       orderBy: { recordedAt: "desc" },
     });
@@ -115,7 +154,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-/** GET /api/sessions/:id — full session detail with all relations */
+/** GET /api/sessions/:id — full session detail with all relations (practice-wide read) */
 router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { userId } = getAuth(req);
@@ -134,7 +173,9 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
       where: { id: req.params.id },
       include: {
         patient: true,
-        physician: true,
+        physician: {
+          select: { id: true, fullName: true, credentials: true },
+        },
         transcript: true,
         soapNote: { include: { approvedBy: true } },
         vitals: true,
@@ -144,12 +185,6 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
 
     if (!session) {
       res.status(404).json({ error: "Session not found" });
-      return;
-    }
-
-    // Physicians can only view their own sessions
-    if (session.physicianId !== physician.id) {
-      res.status(403).json({ error: "Forbidden" });
       return;
     }
 
@@ -182,20 +217,10 @@ router.post(
         return;
       }
 
-      const session = await prisma.session.findUnique({
-        where: { id: req.params.id },
-      });
-
-      if (!session) {
-        // Remove uploaded file — session doesn't exist
+      const ownership = await requireSessionOwner(req.params.id, physician.id);
+      if (!ownership.ok) {
         fs.unlink(req.file.path, () => {});
-        res.status(404).json({ error: "Session not found" });
-        return;
-      }
-
-      if (session.physicianId !== physician.id) {
-        fs.unlink(req.file.path, () => {});
-        res.status(403).json({ error: "Forbidden" });
+        res.status(ownership.status).json({ error: ownership.error });
         return;
       }
 
@@ -203,7 +228,7 @@ router.post(
 
       const updated = await prisma.$transaction(async (tx) => {
         const s = await tx.session.update({
-          where: { id: session.id },
+          where: { id: ownership.session.id },
           data: {
             audioFileUrl,
             status: SessionStatus.TRANSCRIBING,
@@ -213,7 +238,7 @@ router.post(
 
         await tx.auditEvent.create({
           data: {
-            sessionId: session.id,
+            sessionId: ownership.session.id,
             eventType: "AUDIO_CAPTURED",
             description: "Audio recording uploaded successfully",
             author: physician.fullName,
@@ -245,17 +270,17 @@ router.post("/:id/transcribe", async (req: Request, res: Response, next: NextFun
       return;
     }
 
-    const session = await prisma.session.findUnique({
-      where: { id: req.params.id },
-    });
-
-    if (!session) {
-      res.status(404).json({ error: "Session not found" });
+    const ownership = await requireSessionOwner(req.params.id, physician.id);
+    if (!ownership.ok) {
+      res.status(ownership.status).json({ error: ownership.error });
       return;
     }
 
-    if (session.physicianId !== physician.id) {
-      res.status(403).json({ error: "Forbidden" });
+    const session = await prisma.session.findUnique({
+      where: { id: ownership.session.id },
+    });
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
       return;
     }
 
@@ -372,18 +397,18 @@ router.post("/:id/generate-soap", async (req: Request, res: Response, next: Next
       return;
     }
 
-    const session = await prisma.session.findUnique({
-      where: { id: req.params.id },
-      include: { transcript: true },
-    });
-
-    if (!session) {
-      res.status(404).json({ error: "Session not found" });
+    const ownership = await requireSessionOwner(req.params.id, physician.id);
+    if (!ownership.ok) {
+      res.status(ownership.status).json({ error: ownership.error });
       return;
     }
 
-    if (session.physicianId !== physician.id) {
-      res.status(403).json({ error: "Forbidden" });
+    const session = await prisma.session.findUnique({
+      where: { id: ownership.session.id },
+      include: { transcript: true },
+    });
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
       return;
     }
 
@@ -463,18 +488,18 @@ router.put("/:id/soap-note", async (req: Request, res: Response, next: NextFunct
       return;
     }
 
-    const session = await prisma.session.findUnique({
-      where: { id: req.params.id },
-      include: { soapNote: true },
-    });
-
-    if (!session) {
-      res.status(404).json({ error: "Session not found" });
+    const ownership = await requireSessionOwner(req.params.id, physician.id);
+    if (!ownership.ok) {
+      res.status(ownership.status).json({ error: ownership.error });
       return;
     }
 
-    if (session.physicianId !== physician.id) {
-      res.status(403).json({ error: "Forbidden" });
+    const session = await prisma.session.findUnique({
+      where: { id: ownership.session.id },
+      include: { soapNote: true },
+    });
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
       return;
     }
 
@@ -549,18 +574,18 @@ router.post("/:id/soap-note/submit-review", async (req: Request, res: Response, 
       return;
     }
 
-    const session = await prisma.session.findUnique({
-      where: { id: req.params.id },
-      include: { soapNote: true },
-    });
-
-    if (!session) {
-      res.status(404).json({ error: "Session not found" });
+    const ownership = await requireSessionOwner(req.params.id, physician.id);
+    if (!ownership.ok) {
+      res.status(ownership.status).json({ error: ownership.error });
       return;
     }
 
-    if (session.physicianId !== physician.id) {
-      res.status(403).json({ error: "Forbidden" });
+    const session = await prisma.session.findUnique({
+      where: { id: ownership.session.id },
+      include: { soapNote: true },
+    });
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
       return;
     }
 
@@ -616,18 +641,18 @@ router.post("/:id/soap-note/approve", async (req: Request, res: Response, next: 
       return;
     }
 
-    const session = await prisma.session.findUnique({
-      where: { id: req.params.id },
-      include: { soapNote: true },
-    });
-
-    if (!session) {
-      res.status(404).json({ error: "Session not found" });
+    const ownership = await requireSessionOwner(req.params.id, physician.id);
+    if (!ownership.ok) {
+      res.status(ownership.status).json({ error: ownership.error });
       return;
     }
 
-    if (session.physicianId !== physician.id) {
-      res.status(403).json({ error: "Forbidden" });
+    const session = await prisma.session.findUnique({
+      where: { id: ownership.session.id },
+      include: { soapNote: true },
+    });
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
       return;
     }
 
@@ -677,7 +702,7 @@ router.post("/:id/soap-note/approve", async (req: Request, res: Response, next: 
   }
 });
 
-/** GET /api/sessions/:id/audit-events — all audit events for a session, ASC */
+/** GET /api/sessions/:id/audit-events — all audit events for a session, ASC (practice-wide read) */
 router.get("/:id/audit-events", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { userId } = getAuth(req);
@@ -694,15 +719,10 @@ router.get("/:id/audit-events", async (req: Request, res: Response, next: NextFu
 
     const session = await prisma.session.findUnique({
       where: { id: req.params.id },
+      select: { id: true },
     });
-
     if (!session) {
       res.status(404).json({ error: "Session not found" });
-      return;
-    }
-
-    if (session.physicianId !== physician.id) {
-      res.status(403).json({ error: "Forbidden" });
       return;
     }
 
