@@ -3,6 +3,33 @@
 ---
 
 ## 2026-04-14
+### Entry #15 — Enhanced Patient Management: Patient Detail Page (Frontend)
+
+Phase 4 of the feature — the clinical home base for each patient. Two-column layout at `/patients/:id`: scrollable visit history on the left, sticky profile on the right with allergies and medications. All CRUD wired to existing backend endpoints; 20 new tests pass.
+
+**New components (`packages/web/src/components/patient/`):**
+- `PatientProfile.tsx` — demographics display (name, DOB, MRN, sex, height, eye color, blood type). "Edit" button swaps the view for an inline form; Save calls `PUT /api/patients/:id` and bubbles the updated patient up via `onUpdated`. Cancel exits without a request.
+- `AllergyList.tsx` — severity-colored chips (red/yellow/green, gray fallback) rendered with `data-severity` for testable styling. Inline "Add Allergy" form (name + severity dropdown + reaction). Per-chip delete button. POST/DELETE under `/patients/:id/allergies[/:allergyId]`.
+- `MedicationList.tsx` — compact rows showing name, dosage, frequency. Pencil opens an inline edit form pre-filled with current values; trash deletes. Add/Edit share one form with a `mode` state machine (`"idle" | "add" | "edit"`). Uses POST/PUT/DELETE under `/patients/:id/medications[/:medicationId]`.
+- `PatientVisitHistory.tsx` — "Start New Visit" button POSTs to `/api/sessions` with `{ patientId }` and navigates to `/visits/:id`. Chronological list (most recent first) of session rows showing date, physician name, `StatusBadge`, and a SOAP workflow-status pill when a note exists. Empty state when no visits.
+
+**Page (`packages/web/src/pages/PatientDetailPage.tsx`):**
+- Fetches patient on mount via `usePatient.fetchPatient(id)`; cancel-guarded.
+- Left column (`flex-1`) hosts `PatientVisitHistory`; right column (`lg:sticky lg:top-4 lg:max-h-[calc(100vh-6rem)]`) is the profile card containing `PatientProfile` + `AllergyList` + `MedicationList`, all kept in sync via local state setters passed down as `onChange` callbacks.
+- `showToast` intentionally omitted from the fetch effect's dep array — its identity changes on every provider render, which would loop the fetch after any toast fired.
+- Loading spinner, "Patient not found" fallback, back link to `/patients`.
+
+**Tests (`packages/web/src/__tests__/patientDetail.test.tsx` — 20 new):**
+- PatientProfile: renders all fields, em-dash fallbacks, edit mode saves via PUT, cancel doesn't call PUT.
+- AllergyList: severity `data-severity` attribute per chip, empty state, add POSTs + calls onChange, delete calls DELETE + onChange.
+- MedicationList: renders name/dosage/frequency, add POSTs, edit opens pre-filled form + PUTs, delete.
+- PatientVisitHistory: visit rows with physician name and StatusBadge, empty state, SOAP pill when note present, Start New Visit POST+navigate, row click navigates.
+- PatientDetailPage: full fetch + two-column render, sticky class on right column, patient-not-found on fetch failure.
+
+**Suites:** web 69+ / server 129 — all passing.
+
+---
+
 ### Entry #14 — Enhanced Patient Management: Patient List Page (Frontend)
 
 Phase 3 of the feature — frontend list page and navigation. Users can now browse, search, and create patients from `/patients`.
