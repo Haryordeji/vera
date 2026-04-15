@@ -3,6 +3,19 @@
 ---
 
 ## 2026-04-15
+### Entry #28 — PatientCard: Remove allergy count
+
+Allergy/medication details live on the Patient Detail page; showing just a count on the list card added noise without helping triage. The card now shows name, MRN, DOB, and visit count only.
+
+**Changes:**
+- `components/patient/PatientCard.tsx` — dropped the `AlertTriangle` allergy pill and the `allergyCount` derivation. Removed `AlertTriangle` from the lucide-react import. Visit count pill is unchanged.
+- `__tests__/patientList.test.tsx` — renamed "renders name, MRN, DOB, visit count, and allergy count" → "renders name, MRN, DOB, and visit count" (dropped the `"2 allergies"` assertion). Added new negative test "does not render allergy count on the card" that asserts `queryByText(/allerg/i)` is null even when `_count.allergies` is non-zero. "pluralizes counts correctly for single values" → "pluralizes visit count correctly for single values" (dropped "1 allergy" assertion). "renders zero counts when _count is absent" → "renders zero visit count when _count is absent" (dropped "0 allergies" assertion).
+
+Typecheck clean (only pre-existing unrelated warnings in soapWorkflow.test + SoapWorkflowActions). Full test suite not re-run per standing instruction to avoid `npx vitest run` (times out); user will verify manually.
+
+---
+
+## 2026-04-15
 ### Entry #27 — UX Fixes (Issue 5): "Settings" → "My Profile" rename
 
 Fifth slice of `claude/ux-fixes-1-spec.md`. The sidebar entry was labeled "Settings" but the page is really about the physician's own profile, so the label, icon, route, and file all get renamed together.

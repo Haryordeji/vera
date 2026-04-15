@@ -74,7 +74,7 @@ beforeEach(() => {
 // PatientCard
 // ---------------------------------------------------------------------------
 describe("PatientCard", () => {
-  it("renders name, MRN, DOB, visit count, and allergy count", () => {
+  it("renders name, MRN, DOB, and visit count", () => {
     render(
       <MemoryRouter>
         <PatientCard patient={makePatient()} />
@@ -86,10 +86,22 @@ describe("PatientCard", () => {
     // DOB: year is the timezone-safe part to assert on
     expect(screen.getByText(/DOB:.*1990/)).toBeInTheDocument();
     expect(screen.getByText("5 visits")).toBeInTheDocument();
-    expect(screen.getByText("2 allergies")).toBeInTheDocument();
   });
 
-  it("pluralizes counts correctly for single values", () => {
+  it("does not render allergy count on the card", () => {
+    render(
+      <MemoryRouter>
+        <PatientCard
+          patient={makePatient({
+            _count: { allergies: 2, medications: 1, sessions: 5 },
+          })}
+        />
+      </MemoryRouter>
+    );
+    expect(screen.queryByText(/allerg/i)).not.toBeInTheDocument();
+  });
+
+  it("pluralizes visit count correctly for single values", () => {
     render(
       <MemoryRouter>
         <PatientCard
@@ -102,17 +114,15 @@ describe("PatientCard", () => {
     );
 
     expect(screen.getByText("1 visit")).toBeInTheDocument();
-    expect(screen.getByText("1 allergy")).toBeInTheDocument();
   });
 
-  it("renders zero counts when _count is absent", () => {
+  it("renders zero visit count when _count is absent", () => {
     render(
       <MemoryRouter>
         <PatientCard patient={makePatient({ _count: undefined })} />
       </MemoryRouter>
     );
     expect(screen.getByText("0 visits")).toBeInTheDocument();
-    expect(screen.getByText("0 allergies")).toBeInTheDocument();
   });
 
   it("links to the patient detail page", () => {

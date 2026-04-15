@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import {
   UserRound,
   ChevronRight,
-  AlertTriangle,
   ClipboardList,
   RotateCcw,
   Loader2,
@@ -38,7 +37,6 @@ export function PatientCard({
 
   const isArchived = !!patient.archivedAt;
   const visitCount = patient._count?.sessions ?? 0;
-  const allergyCount = patient._count?.allergies ?? 0;
 
   const openDetail = () => navigate(`/patients/${patient.id}`);
 
@@ -111,16 +109,6 @@ export function PatientCard({
         <div className="flex items-center gap-1 text-slate-500">
           <ClipboardList className="w-3.5 h-3.5 text-slate-400" />
           <span>{`${visitCount} ${visitCount === 1 ? "visit" : "visits"}`}</span>
-        </div>
-        <div
-          className={
-            allergyCount > 0
-              ? "flex items-center gap-1 text-amber-700"
-              : "flex items-center gap-1 text-slate-400"
-          }
-        >
-          <AlertTriangle className="w-3.5 h-3.5" />
-          <span>{`${allergyCount} ${allergyCount === 1 ? "allergy" : "allergies"}`}</span>
         </div>
         {isArchived && unarchivePatient ? (
           <button
