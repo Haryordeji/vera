@@ -76,7 +76,7 @@ export function AllergyList({ patientId, allergies, onChange }: Props) {
       </h3>
 
       {allergies.length === 0 ? (
-        <p className="text-xs text-slate-400">No allergies recorded.</p>
+        <p className="text-xs text-slate-400">No known allergies.</p>
       ) : (
         <ul className="flex flex-wrap gap-1.5">
           {allergies.map((a) => (

@@ -28,13 +28,15 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
-**In progress — Enhanced Patient Management feature** (`claude/patient-page-feat-spec.md`):
+**Enhanced Patient Management feature — COMPLETE** (`claude/patient-page-feat-spec.md`):
 - ✅ Database: `Patient` expanded (sex, heightCm, eyeColor, bloodType); new `Allergy`, `Medication`, `Vitals` models; cascade delete on patient relations; Vitals one-to-one with Session.
-- ✅ Seed data updated with profile fields, allergies, medications, and demo-session vitals.
+- ✅ Seed: 6 demo patients with full profiles + realistic allergies + medications. No fake visits/transcripts/SOAP notes — those only come from real usage since they need authentic audio.
 - ✅ API: allergy/medication CRUD nested under patients; vitals POST/PUT with 409 on duplicate + `VITALS_RECORDED` audit event; patient create/update accept new fields; list returns `_count`; detail returns nested allergies/medications/sessions; session detail now includes vitals.
-- ✅ Frontend patient list page: `/patients` route, sidebar nav entry, `PatientCard`, debounced search, inline create form with all profile fields, `usePatient` hook wrapping the API surface.
-- ✅ Frontend patient detail page: `/patients/:id` two-column layout (scrollable visit history left, sticky profile right). `PatientProfile` (inline edit), `AllergyList` (severity-colored chips + add/delete), `MedicationList` (add/edit/delete), `PatientVisitHistory` (Start New Visit button + chronological session rows with physician/status/SOAP pill).
-- ✅ Vitals UI on Active Visit Page: `VitalsForm` + `VitalsDisplay` components in a new Vitals section between the patient header and the audio recorder. Form shown on first visit; display with abnormal-value highlighting (yellow=borderline, red=critical for HR/temp/SpO2/BP systolic) once saved. Edit toggles back to the form and PUTs.
+- ✅ Frontend patient list page: `/patients` route, sidebar nav entry, `PatientCard`, debounced search, inline create form, skeleton loading, empty states.
+- ✅ Frontend patient detail page: `/patients/:id` two-column layout (scrollable visit history left, sticky profile right). `PatientProfile` (inline edit), `AllergyList` (severity-colored chips + add/delete), `MedicationList` (add/edit/delete), `PatientVisitHistory` (Start New Visit + session rows). Skeleton loading, error toasts on all CRUD.
+- ✅ Vitals UI on Active Visit Page: `VitalsForm` + `VitalsDisplay` in a Vitals section between the patient header and the audio recorder. Abnormal-value highlighting (yellow=borderline, red=critical for HR/temp/SpO2/BP systolic). Edit toggles back to the form and PUTs.
+- ✅ Cross-linking: `VisitCard` shows physician name on Dashboard + Past Visits; `NewVisitPage` search consumes the expanded patient endpoint.
+- ✅ Polish: "No known allergies" / "No current medications" empty states; skeleton placeholders; clean demo seed with no pre-generated sessions.
 
 ## Commands
 - `npm run dev` — starts both frontend and backend

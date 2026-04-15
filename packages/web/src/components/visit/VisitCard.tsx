@@ -36,8 +36,12 @@ export function VisitCard({ session }: VisitCardProps) {
         <p className="text-sm font-semibold text-slate-800 truncate">
           {session.patient?.fullName ?? "Unknown Patient"}
         </p>
-        <p className="text-xs text-slate-400 mt-0.5">
-          {formatDate(session.recordedAt)}
+        <p className="text-xs text-slate-500 mt-0.5 truncate">
+          {session.physician?.fullName && (
+            <span data-testid="visit-card-physician">Dr. {session.physician.fullName}</span>
+          )}
+          {session.physician?.fullName && <span className="text-slate-300 mx-1.5">·</span>}
+          <span>{formatDate(session.recordedAt)}</span>
         </p>
       </div>
 

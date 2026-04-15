@@ -3,6 +3,46 @@
 ---
 
 ## 2026-04-14
+### Entry #17 — Enhanced Patient Management: Final Polish, Cross-Linking, Clean Seed
+
+Closing phase of the feature — cross-surface polish, cleaner demo data, and a few rough-edge fixes discovered while preparing to demo.
+
+**Seed rewrite (`packages/server/prisma/seed.ts`):**
+- Removed all fake visits, transcripts, SOAP notes, and audit events — those artifacts are only meaningful when produced from real audio, so they should come from actual usage, not seed data.
+- Kept a single demo physician record (`Sarah Smith`, `demo_clerk_id`) so `AuthSync` can still recognize the demo Clerk identity on first login.
+- Expanded from 3 to 6 demo patients, each with a full profile (sex, heightCm, eyeColor, bloodType) and 1–3 realistic allergies + medications: James Okafor, Maria Chen, Robert Patel, Sarah Johnson, David Rodriguez, Emily Nakamura. Idempotent via upsert + `deleteMany` of allergies/medications before re-inserting.
+- Physician `fullName` is now stored without the "Dr." honorific. The UI prepends it consistently, so storing it in the record was causing "Dr. Dr. Sarah Smith" in places like `VisitCard` and `PatientVisitHistory`.
+
+**Cross-linking — physician name on visit cards (`packages/web/src/components/visit/VisitCard.tsx`):**
+- Added `Dr. {session.physician.fullName}` between the patient name and the recorded-at timestamp, with a middot separator. Renders only when the physician is present on the session, so fixtures that omit it (e.g. the existing `components.test.tsx` visit card tests) keep working. A `data-testid="visit-card-physician"` hook is added for future assertions.
+- Because `DashboardPage` and `PastVisitsPage` both render `VisitCard`, this single edit fulfills the "show physician name on Dashboard and Past Visits" ask in one place.
+- `NewVisitPage` already consumed the `/patients?search=` endpoint which returns the expanded profile + `_count`, so no changes were needed there.
+
+**Polish:**
+- `PatientDetailPage.tsx` — replaced the `Loader2` spinner with a two-column skeleton that mirrors the real layout (visit-history rows on the left, sticky profile card on the right). Gives the page a much less jarring load-in.
+- `AllergyList.tsx` empty state: "No allergies recorded." → **"No known allergies."** (matches clinical phrasing).
+- `MedicationList.tsx` empty state: "No medications recorded." → **"No current medications."**
+- `PatientListPage` already had skeletons + empty states from Phase 3; no change needed.
+- Error toasts for allergy/medication/vitals operations were already in place from their respective phases.
+- `ActiveVisitPage` vitals section already handles pre-feature sessions correctly — when `session.vitals` is null it falls through to `VitalsForm`, so legacy sessions don't break.
+
+**Database:**
+- Wiped dev DB with `npx prisma migrate reset --force --skip-seed` then reseeded via `npx ts-node --transpile-only prisma/seed.ts`. Clean starting state for the demo: 1 physician, 6 patients with profiles/allergies/medications, zero sessions.
+
+**Tests:** `patientDetail.test.tsx` (20), `vitals.test.tsx` (13), `patientList.test.tsx` (9) — **42/42 passing** after the empty-state string change was mirrored in the allergy empty-state test. Full web suite run skipped at user request (the harness is a known hold-up).
+
+**Files touched:**
+- `packages/server/prisma/seed.ts`
+- `packages/web/src/components/visit/VisitCard.tsx`
+- `packages/web/src/components/patient/AllergyList.tsx`
+- `packages/web/src/components/patient/MedicationList.tsx`
+- `packages/web/src/pages/PatientDetailPage.tsx`
+- `packages/web/src/__tests__/patientDetail.test.tsx`
+
+Enhanced Patient Management feature is now complete end-to-end: schema → API → patient list → patient detail (profile + allergies + meds + visit history) → vitals on Active Visit → cross-linking + polish + clean demo seed.
+
+---
+
 ### Entry #16 — Enhanced Patient Management: Vitals on Active Visit Page
 
 Phase 5 of the feature — vitals entry/display on the Active Visit page. New `VitalsForm` and `VitalsDisplay` components plus wiring into `ActiveVisitPage`. 13 new tests pass.

@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { usePatient } from "@/hooks/usePatient";
 import type { Patient, Allergy, Medication } from "@/lib/types";
@@ -64,9 +65,39 @@ export default function PatientDetailPage() {
         </Link>
 
         {loading ? (
-          <div className="flex items-center justify-center py-24 text-slate-400">
-            <Loader2 className="w-5 h-5 animate-spin mr-2" />
-            Loading patient…
+          <div
+            data-testid="patient-detail-skeleton"
+            className="flex flex-col lg:flex-row gap-6 items-start"
+          >
+            <div className="flex-1 min-w-0 w-full space-y-3">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-6 w-40" />
+                <Skeleton className="h-9 w-32" />
+              </div>
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="bg-white rounded-lg border border-slate-200 px-5 py-4 space-y-2"
+                >
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              ))}
+            </div>
+            <aside className="w-full lg:w-80 bg-white rounded-lg border border-slate-200 p-5 space-y-4 shrink-0">
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-3/4" />
+              <Skeleton className="h-3 w-2/3" />
+              <div className="border-t border-slate-100 pt-4 space-y-2">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-6 w-full" />
+              </div>
+              <div className="border-t border-slate-100 pt-4 space-y-2">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-6 w-full" />
+              </div>
+            </aside>
           </div>
         ) : !patient ? (
           <div className="bg-white rounded-lg border border-slate-200 px-5 py-16 text-center">

@@ -214,7 +214,7 @@ describe("AllergyList", () => {
 
   it("shows empty-state message when allergies is empty", () => {
     render(wrap(<AllergyList patientId="patient-1" allergies={[]} onChange={() => {}} />));
-    expect(screen.getByText("No allergies recorded.")).toBeInTheDocument();
+    expect(screen.getByText("No known allergies.")).toBeInTheDocument();
   });
 
   it("add form posts and calls onChange with the new allergy", async () => {

@@ -94,7 +94,7 @@ export function MedicationList({ patientId, medications, onChange }: Props) {
       </h3>
 
       {medications.length === 0 ? (
-        <p className="text-xs text-slate-400">No medications recorded.</p>
+        <p className="text-xs text-slate-400">No current medications.</p>
       ) : (
         <ul className="space-y-1.5">
           {medications.map((m) => (
