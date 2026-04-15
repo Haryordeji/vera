@@ -1,5 +1,7 @@
 # Feature Spec: Enhanced Patient Management & Vitals
 
+## Status: Completed
+
 ## Overview
 
 This feature expands Vera's patient data model and adds a dedicated patient management experience. Currently, patients are simple name/DOB/MRN records created during the new visit flow. After this feature, patients have rich profiles (physical descriptors, allergies, medications), visits capture vitals, and there's a full patient management section with a detail page that serves as a clinical home base for each patient.
