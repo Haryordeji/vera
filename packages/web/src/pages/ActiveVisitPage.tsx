@@ -15,6 +15,7 @@ import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import { VitalsForm } from "@/components/vitals/VitalsForm";
 import { VitalsDisplay } from "@/components/vitals/VitalsDisplay";
 import { OwnershipBanner } from "@/components/visit/OwnershipBanner";
+import { ReviewFeedbackBanner } from "@/components/soap/ReviewFeedbackBanner";
 import { useToast } from "@/components/ui/Toast";
 import { useApi } from "@/lib/api";
 import { useCurrentPhysician } from "@/hooks/useCurrentPhysician";
@@ -24,7 +25,7 @@ const FORBIDDEN_TOAST = "You can only modify sessions you created.";
 function isForbiddenError(err: unknown): boolean {
   return err instanceof Error && err.message.startsWith("API 403");
 }
-import { CheckCircle, FileText, ClipboardList, Loader2, AlertCircle, RefreshCw, Activity, Archive, RotateCcw, MessageSquareWarning } from "lucide-react";
+import { CheckCircle, FileText, ClipboardList, Loader2, AlertCircle, RefreshCw, Activity, Archive, RotateCcw } from "lucide-react";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -286,7 +287,10 @@ export default function ActiveVisitPage() {
     !!currentPhysician &&
     !!session?.soapNote?.assignedReviewer &&
     currentPhysician.id === session.soapNote.assignedReviewer.id;
-  const showOwnershipBanner = knownNonOwner && !isAssignedReviewer;
+  // The banner is shown to any non-owner. Its copy adapts: assigned reviewers
+  // get "You are reviewing this note."; uninvolved physicians get the
+  // "viewing in read-only mode" language.
+  const showOwnershipBanner = knownNonOwner;
   const assignedReviewerName = session?.soapNote?.assignedReviewer?.fullName ?? null;
   const reviewFeedback =
     session?.soapNote?.workflowStatus === "DRAFT"
@@ -370,7 +374,10 @@ export default function ActiveVisitPage() {
         </p>
 
         {showOwnershipBanner && session?.physician && (
-          <OwnershipBanner physicianName={session.physician.fullName} />
+          <OwnershipBanner
+            physicianName={session.physician.fullName}
+            asAssignedReviewer={isAssignedReviewer}
+          />
         )}
 
         {/* Vitals panel */}
@@ -470,24 +477,14 @@ export default function ActiveVisitPage() {
           )}
         </section>
 
-        {/* Review feedback banner — shown when a reviewer returned the note */}
-        {isOwner && reviewFeedback && (
-          <div
-            data-testid="review-feedback-banner"
-            className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4"
-          >
-            <MessageSquareWarning className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-amber-900">
-                {assignedReviewerName
-                  ? `${assignedReviewerName} returned this note for revision`
-                  : "The assigned reviewer returned this note for revision"}
-              </p>
-              <p className="mt-1 text-sm text-amber-800 whitespace-pre-wrap">
-                {reviewFeedback}
-              </p>
-            </div>
-          </div>
+        {/* Review feedback banner — shown while the note is DRAFT and carries
+            feedback from the assigned reviewer. Visible to anyone viewing
+            the visit; the owner is the primary audience. */}
+        {reviewFeedback && (
+          <ReviewFeedbackBanner
+            reviewerName={assignedReviewerName}
+            feedback={reviewFeedback}
+          />
         )}
 
         {/* SOAP note panel */}

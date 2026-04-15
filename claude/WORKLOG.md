@@ -3,6 +3,48 @@
 ---
 
 ## 2026-04-15
+### Entry #32 — Feature: Review Feedback Banner + Reviewer Experience
+
+Closes the review cycle loop in the UI. The assigned reviewer now gets a context-aware ownership banner ("You are reviewing this note.") instead of the generic "read-only" language, and when they click Return to Draft the owner sees the reviewer's feedback in a new `ReviewFeedbackBanner` pinned above the SOAP editor until the note is re-assigned or self-approved. Replaces the inline amber banner that was sketched in Entry #31.
+
+**New component (`packages/web/src/components/soap/ReviewFeedbackBanner.tsx`):**
+- Amber-200 callout with `MessageSquareWarning` icon.
+- Heading: `Dr. {reviewerName} returned this note for revision:` — falls back to "The assigned reviewer returned this note for revision:" when the name is null (defensive; `assignedReviewer` is always hydrated in practice).
+- Feedback text rendered in an italic `<blockquote>` with a left border (amber-300) for visual weight; `whitespace-pre-wrap` so multi-line feedback keeps its shape.
+- Testids: `review-feedback-banner`, `review-feedback-banner-heading`, `review-feedback-banner-body`. Role `status`.
+- Not dismissable — by design, the feedback clears itself on the next `assign-review` POST (backend sets `reviewFeedback = null` in the transaction), so there's no UI state to manage.
+
+**`OwnershipBanner` context-aware copy (`packages/web/src/components/visit/OwnershipBanner.tsx`):**
+- New prop `asAssignedReviewer?: boolean` (default `false`).
+- Default: `Eye` icon + "You are viewing in read-only mode." — preserves the Entry #22 behavior for uninvolved physicians.
+- Reviewer variant: `UserCheck` icon + "You are reviewing this note." Both variants share the "This visit was conducted by Dr. X." lede.
+- New `data-variant="read-only" | "reviewer"` attribute on the banner root so tests can distinguish without relying on fuzzy text matches.
+
+**`ActiveVisitPage` wiring (`packages/web/src/pages/ActiveVisitPage.tsx`):**
+- `showOwnershipBanner` tightened from `knownNonOwner && !isAssignedReviewer` to `knownNonOwner` — the banner now renders for assigned reviewers too, with `asAssignedReviewer={isAssignedReviewer}` controlling the copy.
+- The inline amber feedback `<div>` was replaced with `<ReviewFeedbackBanner reviewerName={assignedReviewerName} feedback={reviewFeedback} />`. The gating expression is now just `reviewFeedback` (not `isOwner && reviewFeedback`) — the existing `reviewFeedback` derivation already returns `null` outside DRAFT, so the banner is naturally DRAFT-only, and dropping the owner gate means a reviewer who navigates back to a note they returned also sees their own feedback in situ.
+- `MessageSquareWarning` import removed — now imported inside the banner component.
+
+**Tests (`packages/web/src/__tests__/reviewerExperience.test.tsx` — new, 8):**
+- Uses the hoisted `vi.mock` pattern for `@/lib/api` + `@clerk/clerk-react`, the same fixture shape as `ownership.test.tsx`. Three physicians: `OWNER` (James Lee), `REVIEWER` (Robin Chen), `UNRELATED` (Pat Morgan). Helper `makeSoap(overrides)` for workflow status + assigned reviewer + feedback permutations, `makeSession(soap)` keyed off OWNER.
+- `ReviewFeedbackBanner` (2): renders with reviewer name + feedback body; falls back to generic heading when `reviewerName` is null.
+- Active Visit page — feedback banner (4): renders on DRAFT with feedback; absent when `reviewFeedback === null`; `it.each` over `PENDING_REVIEW` and `APPROVED` confirms the banner is DRAFT-only even with leftover feedback.
+- Active Visit page — reviewer view (3): ownership banner has `data-variant="reviewer"`, names the owner, contains "reviewing this note", and does NOT contain "read-only"; reviewer-view SOAP textarea has the DOM `readonly` attribute, owner buttons (`btn-save-draft`, `btn-sign-finalize`, `btn-assign-review`) are absent, reviewer buttons (`btn-reviewer-approve`, `btn-return-to-draft`) are present; uninvolved physician still gets the classic `data-variant="read-only"` variant.
+
+**Verification:** `cd packages/web && npx tsc --noEmit` → clean (EXIT=0). Vitest deferred to manual run per session convention. Existing `ownership.test.tsx` assertions still pass: non-owner fixture has no `assignedReviewer`, so the banner falls through to the default read-only variant and `/read-only/i` still matches.
+
+**Manual verification path:** Sign in as Physician A, record a visit, finalize pipeline to DRAFT SOAP. Click "Assign for Review" → pick Physician B → confirm toast. Sign in as Physician B → Dashboard shows the assigned review (from Entry #30 backend) → click in → ownership banner reads "reviewing this note" with UserCheck icon → Approve & Sign or Return to Draft with feedback text. Sign back in as Physician A → visit now DRAFT with an amber `ReviewFeedbackBanner` above the SOAP editor showing Physician B's feedback → edit SOAP → Assign for Review again (banner clears on the next assign) or Sign & Finalize to self-approve.
+
+**Key files:**
+- `packages/web/src/components/soap/ReviewFeedbackBanner.tsx` (new)
+- `packages/web/src/components/visit/OwnershipBanner.tsx`
+- `packages/web/src/pages/ActiveVisitPage.tsx`
+- `packages/web/src/__tests__/reviewerExperience.test.tsx` (new)
+- `CLAUDE.md`
+
+---
+
+## 2026-04-15
 ### Entry #31 — Feature: Review Assignment Workflow (frontend)
 
 Implements the frontend half of `claude/assign-review-spec.md`. Owners can now pick a colleague from a dialog to send a DRAFT note for review; the assigned reviewer gets Approve & Sign and Return to Draft affordances on the Active Visit page; and when a note comes back to DRAFT with feedback, the owner sees the reviewer's note in an amber banner above the SOAP panel.

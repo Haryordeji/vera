@@ -28,6 +28,26 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
+**Review Feedback Loop & Reviewer Experience — COMPLETE** (`claude/assign-review-spec.md` — Reviewer experience + feedback banner):
+- ✅ New `components/soap/ReviewFeedbackBanner.tsx` — amber callout with `MessageSquareWarning` icon, heading "Dr. {reviewerName} returned this note for revision:" (falls back to "The assigned reviewer returned this note for revision:" when the name is missing), and the feedback text in an italicized `<blockquote>` with a left border. Testids: `review-feedback-banner`, `review-feedback-banner-heading`, `review-feedback-banner-body`. Not dismissable — the backend clears `reviewFeedback` on the next `assign-review` call.
+- ✅ `OwnershipBanner` is now context-aware via a new `asAssignedReviewer?: boolean` prop. Default (unchanged): `Eye` icon + "You are viewing in read-only mode." (`data-variant="read-only"`). Reviewer variant: `UserCheck` icon + "You are reviewing this note." (`data-variant="reviewer"`). Both variants share the same "This visit was conducted by Dr. X." lede.
+- ✅ `ActiveVisitPage` banner wiring:
+  - `showOwnershipBanner = knownNonOwner` — the banner now renders for the assigned reviewer too (previously gated out). Copy adapts via `asAssignedReviewer={isAssignedReviewer}`.
+  - Inline feedback banner JSX replaced with `<ReviewFeedbackBanner reviewerName={assignedReviewerName} feedback={reviewFeedback} />`. Condition relaxed from `isOwner && reviewFeedback` to just `reviewFeedback` — the banner is DRAFT-only (via the existing `reviewFeedback` derivation that returns `null` outside DRAFT), so reviewers who navigate back to a note they returned also see their own feedback. Positioned immediately above the SOAP panel.
+  - `MessageSquareWarning` import removed from the page (now lives inside `ReviewFeedbackBanner`).
+- ✅ Reviewer experience on the Active Visit page (end-to-end):
+  - `OwnershipBanner` renders with `reviewer` variant naming the owning physician.
+  - Transcript, vitals (`VitalsDisplay` without edit), and audio recorder (read-only placeholder) — all inherited from the existing non-owner path.
+  - `SoapNoteEditor` stays `readOnly={isApproved || !isOwner}` so the reviewer reads but doesn't edit SOAP content.
+  - `SoapWorkflowActions` reviewer branch renders `Approve & Sign` + `Return to Draft` (already implemented in the prior frontend entry).
+  - Audit timeline unchanged — reviewer sees every event including `REVIEW_ASSIGNED`.
+- ✅ Tests (`reviewerExperience.test.tsx`, 8 new):
+  - `ReviewFeedbackBanner` renders name + feedback; falls back to generic heading when `reviewerName` is null.
+  - `ActiveVisitPage` renders the banner when a DRAFT note carries `reviewFeedback`; doesn't render when `reviewFeedback` is null; doesn't render on `PENDING_REVIEW` or `APPROVED` even with leftover feedback (`it.each`).
+  - Assigned reviewer sees the ownership banner with `data-variant="reviewer"` and "reviewing this note" text (no "read-only" language).
+  - Reviewer sees SOAP content as read-only (textarea has `readonly` attribute), no owner workflow buttons (`btn-save-draft`, `btn-sign-finalize`, `btn-assign-review`), but does see `btn-reviewer-approve` + `btn-return-to-draft`.
+  - Uninvolved physician still gets the classic `data-variant="read-only"` banner variant.
+
 **Review Assignment Workflow (frontend) — COMPLETE** (`claude/assign-review-spec.md` — Frontend Changes):
 - ✅ `SoapNote` type extended: `assignedReviewerId?`, `assignedReviewer?: { id, fullName }`, `reviewFeedback?`.
 - ✅ New `components/soap/AssignReviewDialog.tsx` — modal that fetches `/physicians` on open, filters out the current user, renders a `<select>` of colleagues, POSTs to `/sessions/:id/soap-note/assign-review` with `{ reviewerId }`, shows toast "Assigned to Dr. X for review", and calls `onAssigned(updatedNote, reviewerName)`. Testids: `assign-review-dialog`, `assign-review-loading`, `assign-review-empty`, `assign-review-select`, `assign-review-option-${id}`, `assign-review-cancel`, `assign-review-submit`. Forbidden errors surface the standard "You can only modify sessions you created." toast.
