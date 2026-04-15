@@ -28,6 +28,12 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
+**UX Fixes (Issue 5) — "Settings" → "My Profile" rename — COMPLETE** (`claude/ux-fixes-1-spec.md` §5):
+- ✅ `Sidebar` — nav item relabeled "Settings" → "My Profile"; icon swapped from `Settings` (gear) to `UserCircle` (profile). Route target updated to `/profile`.
+- ✅ Route — `/settings` now renders `<Navigate to="/profile" replace />` so any bookmarked/legacy `/settings` URL 302s to the new path. `/profile` renders the real page.
+- ✅ `SettingsPage.tsx` → `ProfilePage.tsx` (git mv). Component renamed to `ProfilePage`; `AppLayout title` + `<h2>` both say "My Profile".
+- ✅ Tests (`routing.test.tsx`): `ProfilePage shows heading and profile section` (asserts `^my profile$` heading), `renders all nav links` now asserts "My Profile" is present and "Settings" is not, `My Profile link has correct href` → `/profile`, and new `/settings redirects to /profile` test renders the redirect route directly and asserts the ProfilePage heading appears.
+
 **UX Fixes (Issues 3 + 4) — List error/empty states + edit-mode gating — COMPLETE** (`claude/ux-fixes-1-spec.md` §§3–4):
 - ✅ New shared `components/ui/ListError.tsx` — centered error pane with `Try again` retry button. Props: `message?`, `onRetry`, `testId?`; retry test-id auto-generated as `${testId}-retry`.
 - ✅ `DashboardPage` — fetch extracted to stable `loadSessions` useCallback; `error` state; render order loading → `ListError` (`dashboard-error`) → empty → active list. No toasts on empty responses.

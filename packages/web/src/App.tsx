@@ -6,7 +6,7 @@ import {
   SignedOut,
   RedirectToSignIn,
 } from "@clerk/clerk-react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthSync } from "./components/AuthSync";
 import { ToastProvider } from "./components/ui/Toast";
 import { AuthLayout } from "./components/layout/AuthLayout";
@@ -16,7 +16,7 @@ import ActiveVisitPage from "./pages/ActiveVisitPage";
 import PastVisitsPage from "./pages/PastVisitsPage";
 import PatientListPage from "./pages/PatientListPage";
 import PatientDetailPage from "./pages/PatientDetailPage";
-import SettingsPage from "./pages/SettingsPage";
+import ProfilePage from "./pages/ProfilePage";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
 
@@ -34,7 +34,8 @@ function AuthenticatedRoutes() {
         <Route path="/visits" element={<PastVisitsPage />} />
         <Route path="/patients" element={<PatientListPage />} />
         <Route path="/patients/:id" element={<PatientDetailPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/settings" element={<Navigate to="/profile" replace />} />
       </Routes>
     </AuthSync>
   );

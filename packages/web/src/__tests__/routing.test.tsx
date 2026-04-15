@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Routes, Route, Navigate } from "react-router-dom";
 
 // ---------------------------------------------------------------------------
 // Mock useApi — stable function references via vi.hoisted() so the
@@ -50,7 +50,7 @@ import DashboardPage from "../pages/DashboardPage";
 import NewVisitPage from "../pages/NewVisitPage";
 import ActiveVisitPage from "../pages/ActiveVisitPage";
 import PastVisitsPage from "../pages/PastVisitsPage";
-import SettingsPage from "../pages/SettingsPage";
+import ProfilePage from "../pages/ProfilePage";
 import { AppLayout } from "../components/layout/AppLayout";
 import { Sidebar } from "../components/layout/Sidebar";
 
@@ -92,10 +92,26 @@ describe("Page components render", () => {
     expect(screen.getByText("No visits found.")).toBeInTheDocument();
   });
 
-  it("SettingsPage shows heading and profile section", async () => {
-    await renderAt(<SettingsPage />);
-    expect(screen.getByRole("heading", { level: 2, name: /^settings$/i })).toBeInTheDocument();
+  it("ProfilePage shows heading and profile section", async () => {
+    await renderAt(<ProfilePage />);
+    expect(screen.getByRole("heading", { level: 2, name: /^my profile$/i })).toBeInTheDocument();
     expect(screen.getByText("Physician Profile")).toBeInTheDocument();
+  });
+
+  it("/settings redirects to /profile", async () => {
+    await act(async () => {
+      render(
+        <MemoryRouter initialEntries={["/settings"]}>
+          <Routes>
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/settings" element={<Navigate to="/profile" replace />} />
+          </Routes>
+        </MemoryRouter>
+      );
+    });
+    expect(
+      screen.getByRole("heading", { level: 2, name: /^my profile$/i })
+    ).toBeInTheDocument();
   });
 });
 
@@ -159,7 +175,8 @@ describe("Sidebar navigation", () => {
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Patients")).toBeInTheDocument();
     expect(screen.getByText("Past Visits")).toBeInTheDocument();
-    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.getByText("My Profile")).toBeInTheDocument();
+    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
   });
 
   it("Patients link appears between Dashboard and Past Visits with correct href", async () => {
@@ -192,10 +209,10 @@ describe("Sidebar navigation", () => {
     expect(link).toHaveAttribute("href", "/visits");
   });
 
-  it("Settings link has correct href", async () => {
+  it("My Profile link has correct href", async () => {
     await renderAt(<Sidebar />);
-    const link = screen.getByRole("link", { name: /settings/i });
-    expect(link).toHaveAttribute("href", "/settings");
+    const link = screen.getByRole("link", { name: /my profile/i });
+    expect(link).toHaveAttribute("href", "/profile");
   });
 
   it("Start New Visit button navigates to /visits/new", async () => {

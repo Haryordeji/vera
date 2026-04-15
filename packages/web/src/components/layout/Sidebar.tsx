@@ -5,7 +5,7 @@ import {
   LayoutDashboard,
   ClipboardList,
   Clock,
-  Settings,
+  UserCircle,
   Plus,
   Users,
 } from "lucide-react";
@@ -17,7 +17,7 @@ const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, key: "dashboard" },
   { to: "/patients", label: "Patients", icon: Users, end: false, key: "patients" },
   { to: "/visits", label: "Past Visits", icon: Clock, end: false, key: "visits" },
-  { to: "/settings", label: "Settings", icon: Settings, end: false, key: "settings" },
+  { to: "/profile", label: "My Profile", icon: UserCircle, end: false, key: "profile" },
 ] as const;
 
 export function Sidebar() {

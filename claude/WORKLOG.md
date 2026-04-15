@@ -3,6 +3,30 @@
 ---
 
 ## 2026-04-15
+### Entry #27 — UX Fixes (Issue 5): "Settings" → "My Profile" rename
+
+Fifth slice of `claude/ux-fixes-1-spec.md`. The sidebar entry was labeled "Settings" but the page is really about the physician's own profile, so the label, icon, route, and file all get renamed together.
+
+**Changes:**
+- `Sidebar.tsx` — nav item `{ to: "/settings", label: "Settings", icon: Settings }` → `{ to: "/profile", label: "My Profile", icon: UserCircle }`. Icon import swapped from `Settings` to `UserCircle` (lucide-react).
+- `App.tsx` — `SettingsPage` import replaced with `ProfilePage`. Route `/settings` now renders `<Navigate to="/profile" replace />` so legacy/bookmarked URLs 302 forward instead of 404-ing. New `/profile` route renders the page. `Navigate` added to the react-router-dom import.
+- `pages/SettingsPage.tsx` → `pages/ProfilePage.tsx` (git mv). Component renamed `SettingsPage` → `ProfilePage`. `AppLayout title="Settings"` → `title="My Profile"`. `<h2>Settings</h2>` → `<h2>My Profile</h2>`. Subtext and Physician Profile section untouched.
+
+**Tests (`routing.test.tsx`):**
+- Import `SettingsPage` → `ProfilePage`; import `Routes`, `Route`, `Navigate` from react-router-dom.
+- `SettingsPage shows heading…` → `ProfilePage shows heading and profile section`: asserts `^my profile$` as the level-2 heading.
+- `renders all nav links` now asserts "My Profile" is present and "Settings" is not (sanity check that nothing still labels it the old way).
+- `Settings link has correct href` → `My Profile link has correct href`: asserts `href="/profile"`.
+- New `/settings redirects to /profile` test: renders a stand-alone `<MemoryRouter initialEntries={["/settings"]}>` with both the `/profile` route (→ ProfilePage) and the `/settings` redirect route, then asserts the ProfilePage heading appears (proves the redirect lands on the page).
+
+**Key files modified:**
+- `src/App.tsx`, `src/components/layout/Sidebar.tsx`
+- `src/pages/ProfilePage.tsx` (renamed from SettingsPage.tsx)
+- `src/__tests__/routing.test.tsx`
+
+---
+
+## 2026-04-15
 ### Entry #26 — UX Fixes (Issues 3 + 4): List error/empty states + edit-mode gating
 
 Fourth slice of `claude/ux-fixes-1-spec.md`. Stops list pages from showing "Failed to load…" when the API legitimately returns no results, and locks allergies/medications behind the Patient Profile edit toggle so clinicians can't delete a chip or row by accident.

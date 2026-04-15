@@ -1,12 +1,12 @@
 import { AppLayout } from "@/components/layout/AppLayout";
 import { UserRound, Mail, Award } from "lucide-react";
 
-export default function SettingsPage() {
+export default function ProfilePage() {
   return (
-    <AppLayout title="Settings">
+    <AppLayout title="My Profile">
       <div className="px-6 py-6 max-w-2xl mx-auto space-y-6">
         <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Settings</h2>
+          <h2 className="text-2xl font-semibold text-slate-900">My Profile</h2>
           <p className="mt-1 text-slate-500">
             Manage your profile and preferences.
           </p>
