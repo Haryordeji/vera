@@ -28,6 +28,17 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
+**UX Fixes (Issues 3 + 4) — List error/empty states + edit-mode gating — COMPLETE** (`claude/ux-fixes-1-spec.md` §§3–4):
+- ✅ New shared `components/ui/ListError.tsx` — centered error pane with `Try again` retry button. Props: `message?`, `onRetry`, `testId?`; retry test-id auto-generated as `${testId}-retry`.
+- ✅ `DashboardPage` — fetch extracted to stable `loadSessions` useCallback; `error` state; render order loading → `ListError` (`dashboard-error`) → empty → active list. No toasts on empty responses.
+- ✅ `PastVisitsPage` — new `error` + `reloadNonce` state (retry increments nonce; fetch effect depends on multiple reactive values). Empty copy now conditional: filters active → "No visits match your filters." + subtext; no filters → "No visits found." Error testid `past-visits-error`.
+- ✅ `PatientListPage` — `error` state replaces the prior toast. Empty subtext tightened to "Add your first patient." Error testid `patient-list-error`, empty testid `patient-list-empty`.
+- ✅ `PatientDetailPage` — same `reloadNonce` retry pattern. Error testid `patient-detail-error`. Lifts `editing` state to the page so it drives the profile/allergies/medications gate.
+- ✅ `PatientVisitHistory` — empty copy rewritten to "No visits yet for this patient. / Start the first one." (`patient-visit-history-empty`).
+- ✅ `PatientProfile` — now supports controlled editing (`editing?`, `onStartEdit?`, `onFinishEdit?`) while preserving backward compatibility (falls back to internal `uncontrolledEditing` state when parent doesn't pass `editing`). A `useEffect` rehydrates the form snapshot each time `editing` flips true.
+- ✅ `AllergyList` + `MedicationList` — new `editable?: boolean` prop (default `true` to keep standalone tests working). When `false`: chip remove-X / row edit+delete cluster and the Add form/button are all hidden (content itself still renders). `PatientDetailPage` passes `editable={editing}` so one Edit click unlocks demographics + allergies + medications together.
+- ✅ Tests (`errorStates.test.tsx`, 8): empty patient list shows `patient-list-empty` not error; zero-session patient detail shows `patient-visit-history-empty` not error; rejected patient list fetch shows `patient-list-error` + retry; rejected patient detail fetch shows `patient-detail-error` + retry; AllergyList `editable={false}` hides remove+add; `editable={true}` shows them; MedicationList `editable={false}` hides edit/delete/add; `editable={true}` shows them. Existing `pastVisits.test.tsx` + `routing.test.tsx` empty-state assertions updated to "No visits found."
+
 **UX Fixes (Issue 2) — Archive pattern (frontend) — COMPLETE** (`claude/ux-fixes-1-spec.md` §2):
 - ✅ `Patient` / `Session` / `PatientSummary` types extended with optional `archivedAt`. `usePatient` hook now accepts `fetchPatients(search, { includeArchived })` and exposes `archivePatient` / `unarchivePatient`.
 - ✅ `PatientCard` + `VisitCard` converted from outer `<button>` to `<div role="button">` so the new Unarchive button (`*-card-unarchive`) can live inside. Archived rows render muted (`bg-slate-50 opacity-75`) with an "Archived" pill badge (`*-card-archived-badge`). `VisitCard` requires `canUnarchive` (owner) + `unarchiveSession` before showing the button; non-owners see archived rows but no restore affordance.

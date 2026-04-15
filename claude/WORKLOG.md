@@ -3,6 +3,46 @@
 ---
 
 ## 2026-04-15
+### Entry #26 — UX Fixes (Issues 3 + 4): List error/empty states + edit-mode gating
+
+Fourth slice of `claude/ux-fixes-1-spec.md`. Stops list pages from showing "Failed to load…" when the API legitimately returns no results, and locks allergies/medications behind the Patient Profile edit toggle so clinicians can't delete a chip or row by accident.
+
+**Issue 3 — Empty vs error distinction on every list page:**
+- New shared `components/ui/ListError.tsx` — centered card with `AlertCircle`, message, and a `Try again` button. Props: `message?`, `onRetry`, `testId?`. Retry test-id is auto-generated as `${testId}-retry`.
+- `DashboardPage` — fetch extracted to a `useCallback` (`loadSessions`) so the retry button gets a stable reference. Added `error: boolean` state; render chain is now loading skeleton → `ListError` (`dashboard-error`) → empty state → active list. No more toasts on empty responses.
+- `PastVisitsPage` — new `error` + `reloadNonce` state; retry increments the nonce (the fetch effect depends on search/physician/status/archived so we can't hand retry a stable callback). Empty copy is now conditional: `"No visits match your filters."` when any filter is active, otherwise `"No visits found."` Subtext only renders when filtered. Error testid: `past-visits-error`.
+- `PatientListPage` — `error` state replaces the prior toast. Empty subtext tightened from "Add a patient to get started." → "Add your first patient." Error testid: `patient-list-error`. Empty testid: `patient-list-empty`.
+- `PatientDetailPage` — same `reloadNonce` retry pattern as Past Visits. Error testid: `patient-detail-error`.
+- `PatientVisitHistory` — empty-state copy rewritten to "No visits yet for this patient." + "Start the first one." `data-testid="patient-visit-history-empty"`.
+
+**Issue 4 — Lock allergies/medications behind Edit Profile:**
+- `PatientProfile` — now supports controlled editing: `editing?`, `onStartEdit?`, `onFinishEdit?` props. Falls back to internal `uncontrolledEditing` state when the parent doesn't pass `editing`, so existing standalone usage and tests keep working. A `useEffect` rehydrates the form from the current patient snapshot every time `editing` flips true (prevents stale inputs when re-entering edit mode). Save/Cancel call `closeEdit()`.
+- `AllergyList` — new `editable?: boolean` prop (default `true` so component-level tests that exercise add/delete still compile). When `editable={false}`, the chip's remove-X button and the entire add-allergy form/button are hidden. Chips themselves always render.
+- `MedicationList` — new `editable?: boolean` prop (default `true`). When `editable={false}`, the per-row edit/delete icon cluster and the add-medication form/button are hidden.
+- `PatientDetailPage` — lifts the edit toggle into page-level state (`editing`). Passes `editing` + `onStartEdit`/`onFinishEdit` to `PatientProfile`, and `editable={editing}` to `AllergyList` + `MedicationList`. One click on `Edit` now unlocks the whole profile column (demographics + allergies + medications); Save/Cancel locks it all back up.
+
+**Tests (`errorStates.test.tsx`, 8):**
+- PatientListPage empty list shows `patient-list-empty` + "Add your first patient." and does *not* render `patient-list-error`.
+- PatientDetailPage with zero sessions shows `patient-visit-history-empty` + "Start the first one." and does *not* render `patient-detail-error`.
+- PatientListPage with a rejected fetch shows `patient-list-error` + retry button, no empty state.
+- PatientDetailPage with a rejected fetch shows `patient-detail-error` + retry button.
+- AllergyList `editable={false}` hides remove-X and add button (chips still visible).
+- AllergyList `editable={true}` shows remove-X and add button.
+- MedicationList `editable={false}` hides edit/delete/add.
+- MedicationList `editable={true}` shows edit/delete/add.
+
+**Existing tests updated:**
+- `pastVisits.test.tsx` + `routing.test.tsx` — empty-state assertion updated from `"No visits match your search."` → `"No visits found."` to match the new un-filtered copy.
+
+**Key files modified:**
+- `src/components/ui/ListError.tsx` (new)
+- `src/pages/DashboardPage.tsx`, `PastVisitsPage.tsx`, `PatientListPage.tsx`, `PatientDetailPage.tsx`
+- `src/components/patient/PatientProfile.tsx`, `AllergyList.tsx`, `MedicationList.tsx`, `PatientVisitHistory.tsx`
+- `src/__tests__/errorStates.test.tsx` (new), `pastVisits.test.tsx`, `routing.test.tsx`
+
+---
+
+## 2026-04-15
 ### Entry #25 — UX Fixes (Issue 2): Archive Pattern (Frontend)
 
 Third slice of `claude/ux-fixes-1-spec.md`. Wires the archive backend from Entry #24 into the UI — confirmation dialogs, archived toggles on list pages, muted/badged cards, and owner-only archive actions on visits.

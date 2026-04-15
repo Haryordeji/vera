@@ -3,6 +3,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { VisitCard } from "@/components/visit/VisitCard";
 import { PhysicianFilter } from "@/components/visit/PhysicianFilter";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { ListError } from "@/components/ui/ListError";
 import { useToast } from "@/components/ui/Toast";
 import { useApi } from "@/lib/api";
 import { useCurrentPhysician } from "@/hooks/useCurrentPhysician";
@@ -25,12 +26,17 @@ export default function PastVisitsPage() {
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [physicianId, setPhysicianId] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus | "ALL">("ALL");
   const [includeArchived, setIncludeArchived] = useState(false);
+
+  const filtersActive =
+    !!debouncedSearch || !!physicianId || status !== "ALL" || includeArchived;
 
   // Debounce search input → 300ms
   useEffect(() => {
@@ -47,11 +53,12 @@ export default function PastVisitsPage() {
     if (includeArchived) params.set("includeArchived", "true");
 
     setLoading(true);
+    setError(false);
     get<Session[]>(`/sessions?${params.toString()}`)
-      .then(setSessions)
-      .catch(() => showToast("Failed to load visits", "error"))
+      .then((data) => setSessions(Array.isArray(data) ? data : []))
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [get, debouncedSearch, physicianId, status, includeArchived]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [get, debouncedSearch, physicianId, status, includeArchived, reloadNonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const unarchiveSession = useCallback(
     (sessionId: string) => post<Session>(`/sessions/${sessionId}/unarchive`),
@@ -138,6 +145,12 @@ export default function PastVisitsPage() {
               </div>
             ))}
           </div>
+        ) : error ? (
+          <ListError
+            testId="past-visits-error"
+            message="We couldn't load past visits."
+            onRetry={() => setReloadNonce((n) => n + 1)}
+          />
         ) : sessions.length === 0 ? (
           <div
             data-testid="past-visits-empty"
@@ -145,11 +158,13 @@ export default function PastVisitsPage() {
           >
             <Clock className="w-10 h-10 text-slate-300 mx-auto mb-3" />
             <h3 className="text-base font-medium text-slate-700 mb-1">
-              No visits match your search.
+              {filtersActive ? "No visits match your filters." : "No visits found."}
             </h3>
-            <p className="text-sm text-slate-400">
-              Try adjusting your search or filters.
-            </p>
+            {filtersActive && (
+              <p className="text-sm text-slate-400">
+                Try adjusting your search or filters.
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-2" data-testid="past-visits-list">

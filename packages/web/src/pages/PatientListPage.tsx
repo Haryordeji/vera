@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PatientCard } from "@/components/patient/PatientCard";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { ListError } from "@/components/ui/ListError";
 import { useToast } from "@/components/ui/Toast";
 import { usePatient, type PatientInput } from "@/hooks/usePatient";
 import type { Patient } from "@/lib/types";
@@ -23,6 +24,7 @@ export default function PatientListPage() {
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [search, setSearch] = useState("");
   const [showArchived, setShowArchived] = useState(false);
 
@@ -33,16 +35,18 @@ export default function PatientListPage() {
 
   const loadPatients = useCallback(
     async (searchTerm?: string, includeArchived?: boolean) => {
+      setLoading(true);
+      setError(false);
       try {
         const result = await fetchPatients(searchTerm, { includeArchived });
-        setPatients(result);
+        setPatients(Array.isArray(result) ? result : []);
       } catch {
-        showToast("Failed to load patients", "error");
+        setError(true);
       } finally {
         setLoading(false);
       }
     },
-    [fetchPatients, showToast]
+    [fetchPatients]
   );
 
   // Initial load
@@ -285,8 +289,17 @@ export default function PatientListPage() {
               </div>
             ))}
           </div>
+        ) : error ? (
+          <ListError
+            testId="patient-list-error"
+            message="We couldn't load your patients."
+            onRetry={() => loadPatients(search, showArchived)}
+          />
         ) : patients.length === 0 ? (
-          <div className="bg-white rounded-lg border border-slate-200 px-5 py-16 text-center">
+          <div
+            data-testid="patient-list-empty"
+            className="bg-white rounded-lg border border-slate-200 px-5 py-16 text-center"
+          >
             <Users className="w-10 h-10 text-slate-300 mx-auto mb-3" />
             <h3 className="text-base font-medium text-slate-700 mb-1">
               {search.trim() ? "No matching patients" : "No patients yet"}
@@ -294,7 +307,7 @@ export default function PatientListPage() {
             <p className="text-sm text-slate-400">
               {search.trim()
                 ? "Try adjusting your search."
-                : "Add a patient to get started."}
+                : "Add your first patient."}
             </p>
           </div>
         ) : (

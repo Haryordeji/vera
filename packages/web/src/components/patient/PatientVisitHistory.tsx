@@ -70,12 +70,15 @@ export function PatientVisitHistory({ patientId, visits }: Props) {
       </div>
 
       {sorted.length === 0 ? (
-        <div className="bg-white rounded-lg border border-slate-200 px-5 py-12 text-center">
+        <div
+          data-testid="patient-visit-history-empty"
+          className="bg-white rounded-lg border border-slate-200 px-5 py-12 text-center"
+        >
           <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-          <h3 className="text-sm font-medium text-slate-700">No visits yet</h3>
-          <p className="text-xs text-slate-400 mt-1">
-            Start a new visit to begin documenting care.
-          </p>
+          <h3 className="text-sm font-medium text-slate-700">
+            No visits yet for this patient.
+          </h3>
+          <p className="text-xs text-slate-400 mt-1">Start the first one.</p>
         </div>
       ) : (
         <ul className="space-y-2">

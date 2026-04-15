@@ -4,6 +4,7 @@ import { Archive, RotateCcw, Loader2 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { ListError } from "@/components/ui/ListError";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { usePatient } from "@/hooks/usePatient";
@@ -21,18 +22,23 @@ export default function PatientDetailPage() {
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
+    setLoading(true);
+    setError(false);
     (async () => {
       try {
         const result = await fetchPatient(id);
         if (!cancelled) setPatient(result);
       } catch {
-        if (!cancelled) showToast("Failed to load patient", "error");
+        if (!cancelled) setError(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -40,11 +46,7 @@ export default function PatientDetailPage() {
     return () => {
       cancelled = true;
     };
-    // showToast omitted: its identity changes on every ToastProvider render,
-    // which would re-trigger the fetch in a loop when the toast itself causes
-    // a provider re-render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, fetchPatient]);
+  }, [id, fetchPatient, reloadNonce]);
 
   const handleProfileUpdated = useCallback((updated: Patient) => {
     setPatient((prev) => (prev ? { ...prev, ...updated } : updated));
@@ -186,6 +188,12 @@ export default function PatientDetailPage() {
               </div>
             </aside>
           </div>
+        ) : error ? (
+          <ListError
+            testId="patient-detail-error"
+            message="We couldn't load this patient."
+            onRetry={() => setReloadNonce((n) => n + 1)}
+          />
         ) : !patient ? (
           <div className="bg-white rounded-lg border border-slate-200 px-5 py-16 text-center">
             <h2 className="text-base font-medium text-slate-700">Patient not found</h2>
@@ -208,12 +216,19 @@ export default function PatientDetailPage() {
               data-testid="patient-detail-sticky"
               className="w-full lg:w-80 lg:sticky lg:top-4 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto bg-white rounded-lg border border-slate-200 p-5 space-y-5 shrink-0"
             >
-              <PatientProfile patient={patient} onUpdated={handleProfileUpdated} />
+              <PatientProfile
+                patient={patient}
+                editing={editing}
+                onStartEdit={() => setEditing(true)}
+                onFinishEdit={() => setEditing(false)}
+                onUpdated={handleProfileUpdated}
+              />
               <div className="border-t border-slate-100 pt-4">
                 <AllergyList
                   patientId={patient.id}
                   allergies={patient.allergies ?? []}
                   onChange={handleAllergiesChange}
+                  editable={editing}
                 />
               </div>
               <div className="border-t border-slate-100 pt-4">
@@ -221,6 +236,7 @@ export default function PatientDetailPage() {
                   patientId={patient.id}
                   medications={patient.medications ?? []}
                   onChange={handleMedicationsChange}
+                  editable={editing}
                 />
               </div>
             </aside>

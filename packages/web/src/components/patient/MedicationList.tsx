@@ -8,11 +8,13 @@ interface Props {
   patientId: string;
   medications: Medication[];
   onChange: (next: Medication[]) => void;
+  /** When false, the component is display-only: no edit/delete icons and no Add form. Defaults to true for standalone usage. */
+  editable?: boolean;
 }
 
 const EMPTY: MedicationInput = { name: "", dosage: "", frequency: "" };
 
-export function MedicationList({ patientId, medications, onChange }: Props) {
+export function MedicationList({ patientId, medications, onChange, editable = true }: Props) {
   const { addMedication, updateMedication, deleteMedication } = usePatient();
   const { showToast } = useToast();
 
@@ -112,33 +114,35 @@ export function MedicationList({ patientId, medications, onChange }: Props) {
                   <p className="text-[11px] text-slate-500 mt-0.5">{m.frequency}</p>
                 )}
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => startEdit(m)}
-                  aria-label={`Edit medication ${m.name}`}
-                  className="p-1 text-slate-400 hover:text-slate-700"
-                >
-                  <Pencil className="w-3 h-3" />
-                </button>
-                <button
-                  onClick={() => handleDelete(m.id)}
-                  disabled={deletingId === m.id}
-                  aria-label={`Remove medication ${m.name}`}
-                  className="p-1 text-slate-400 hover:text-red-600"
-                >
-                  {deletingId === m.id ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-3 h-3" />
-                  )}
-                </button>
-              </div>
+              {editable && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => startEdit(m)}
+                    aria-label={`Edit medication ${m.name}`}
+                    className="p-1 text-slate-400 hover:text-slate-700"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(m.id)}
+                    disabled={deletingId === m.id}
+                    aria-label={`Remove medication ${m.name}`}
+                    className="p-1 text-slate-400 hover:text-red-600"
+                  >
+                    {deletingId === m.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3 h-3" />
+                    )}
+                  </button>
+                </div>
+              )}
             </li>
           ))}
         </ul>
       )}
 
-      {mode !== "idle" ? (
+      {!editable ? null : mode !== "idle" ? (
         <form
           onSubmit={handleSubmit}
           data-testid="medication-form"

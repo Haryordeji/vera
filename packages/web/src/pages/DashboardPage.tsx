@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ActiveSessionCard } from "@/components/visit/ActiveSessionCard";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { useToast } from "@/components/ui/Toast";
+import { ListError } from "@/components/ui/ListError";
 import { useApi } from "@/lib/api";
 import type { Session, SessionStatus } from "@/lib/types";
 import { Plus, Loader2, ClipboardCheck, CheckCircle2, ArrowRight } from "lucide-react";
@@ -19,17 +19,23 @@ export default function DashboardPage() {
   const { get } = useApi();
   const navigate = useNavigate();
   const { user } = useUser();
-  const { showToast } = useToast();
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  const loadSessions = useCallback(() => {
+    setLoading(true);
+    setError(false);
+    get<Session[]>("/sessions?scope=mine")
+      .then((data) => setSessions(Array.isArray(data) ? data : []))
+      .catch(() => setError(true))
+      .finally(() => setLoading(false));
+  }, [get]);
 
   useEffect(() => {
-    get<Session[]>("/sessions?scope=mine")
-      .then(setSessions)
-      .catch(() => showToast("Failed to load visits", "error"))
-      .finally(() => setLoading(false));
-  }, [get]); // eslint-disable-line react-hooks/exhaustive-deps
+    loadSessions();
+  }, [loadSessions]);
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -128,6 +134,12 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
+          ) : error ? (
+            <ListError
+              testId="dashboard-error"
+              message="We couldn't load your sessions."
+              onRetry={loadSessions}
+            />
           ) : activeSessions.length === 0 ? (
             <div
               data-testid="dashboard-empty-state"

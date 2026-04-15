@@ -8,6 +8,8 @@ interface Props {
   patientId: string;
   allergies: Allergy[];
   onChange: (next: Allergy[]) => void;
+  /** When false, the component is display-only: no delete X's and no Add form. Defaults to true for standalone usage. */
+  editable?: boolean;
 }
 
 const SEVERITY_STYLE: Record<string, string> = {
@@ -23,7 +25,7 @@ function chipClass(severity: string | null) {
 
 const EMPTY: AllergyInput = { name: "", severity: "", reaction: "" };
 
-export function AllergyList({ patientId, allergies, onChange }: Props) {
+export function AllergyList({ patientId, allergies, onChange, editable = true }: Props) {
   const { addAllergy, deleteAllergy } = usePatient();
   const { showToast } = useToast();
 
@@ -90,24 +92,26 @@ export function AllergyList({ patientId, allergies, onChange }: Props) {
             >
               <span className="font-medium">{a.name}</span>
               {a.severity && <span className="text-[10px] opacity-80">· {a.severity}</span>}
-              <button
-                onClick={() => handleDelete(a.id)}
-                disabled={deletingId === a.id}
-                aria-label={`Remove allergy ${a.name}`}
-                className="ml-0.5 opacity-60 hover:opacity-100"
-              >
-                {deletingId === a.id ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <X className="w-3 h-3" />
-                )}
-              </button>
+              {editable && (
+                <button
+                  onClick={() => handleDelete(a.id)}
+                  disabled={deletingId === a.id}
+                  aria-label={`Remove allergy ${a.name}`}
+                  className="ml-0.5 opacity-60 hover:opacity-100"
+                >
+                  {deletingId === a.id ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <X className="w-3 h-3" />
+                  )}
+                </button>
+              )}
             </li>
           ))}
         </ul>
       )}
 
-      {showForm ? (
+      {!editable ? null : showForm ? (
         <form
           onSubmit={handleAdd}
           data-testid="allergy-form"

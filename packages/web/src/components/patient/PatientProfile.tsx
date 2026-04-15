@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Pencil, X, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { usePatient, type PatientInput } from "@/hooks/usePatient";
@@ -7,6 +7,10 @@ import type { Patient } from "@/lib/types";
 interface Props {
   patient: Patient;
   onUpdated: (patient: Patient) => void;
+  /** Controlled edit mode. When provided, PatientProfile defers to the parent for enter/exit. */
+  editing?: boolean;
+  onStartEdit?: () => void;
+  onFinishEdit?: () => void;
 }
 
 function formatDob(iso: string | null) {
@@ -25,11 +29,20 @@ function toInputDate(iso: string | null) {
 
 const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 
-export function PatientProfile({ patient, onUpdated }: Props) {
+export function PatientProfile({
+  patient,
+  onUpdated,
+  editing: controlledEditing,
+  onStartEdit,
+  onFinishEdit,
+}: Props) {
   const { updatePatient } = usePatient();
   const { showToast } = useToast();
 
-  const [editing, setEditing] = useState(false);
+  const isControlled = controlledEditing !== undefined;
+  const [uncontrolledEditing, setUncontrolledEditing] = useState(false);
+  const editing = isControlled ? controlledEditing : uncontrolledEditing;
+
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<PatientInput>(() => ({
     fullName: patient.fullName,
@@ -41,17 +54,36 @@ export function PatientProfile({ patient, onUpdated }: Props) {
     bloodType: patient.bloodType ?? "",
   }));
 
+  // When edit mode is entered (controlled or uncontrolled), rehydrate the form
+  // from the current patient snapshot so stale inputs aren't carried across.
+  useEffect(() => {
+    if (editing) {
+      setForm({
+        fullName: patient.fullName,
+        dateOfBirth: toInputDate(patient.dateOfBirth),
+        mrn: patient.mrn ?? "",
+        sex: patient.sex ?? "",
+        heightCm: patient.heightCm,
+        eyeColor: patient.eyeColor ?? "",
+        bloodType: patient.bloodType ?? "",
+      });
+    }
+  }, [editing, patient]);
+
   function openEdit() {
-    setForm({
-      fullName: patient.fullName,
-      dateOfBirth: toInputDate(patient.dateOfBirth),
-      mrn: patient.mrn ?? "",
-      sex: patient.sex ?? "",
-      heightCm: patient.heightCm,
-      eyeColor: patient.eyeColor ?? "",
-      bloodType: patient.bloodType ?? "",
-    });
-    setEditing(true);
+    if (isControlled) {
+      onStartEdit?.();
+    } else {
+      setUncontrolledEditing(true);
+    }
+  }
+
+  function closeEdit() {
+    if (isControlled) {
+      onFinishEdit?.();
+    } else {
+      setUncontrolledEditing(false);
+    }
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -72,7 +104,7 @@ export function PatientProfile({ patient, onUpdated }: Props) {
         bloodType: form.bloodType || null,
       });
       onUpdated({ ...patient, ...updated });
-      setEditing(false);
+      closeEdit();
       showToast("Profile updated");
     } catch {
       showToast("Failed to update profile", "error");
@@ -92,7 +124,7 @@ export function PatientProfile({ patient, onUpdated }: Props) {
           <h3 className="text-sm font-semibold text-slate-700">Edit Profile</h3>
           <button
             type="button"
-            onClick={() => setEditing(false)}
+            onClick={closeEdit}
             className="text-slate-400 hover:text-slate-600"
             aria-label="Cancel edit"
           >
@@ -181,7 +213,7 @@ export function PatientProfile({ patient, onUpdated }: Props) {
         <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
-            onClick={() => setEditing(false)}
+            onClick={closeEdit}
             className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded hover:bg-slate-50"
           >
             Cancel
