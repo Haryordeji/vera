@@ -17,8 +17,9 @@ model Physician {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  sessions      Session[]
-  approvedNotes SoapNote[] @relation("ApprovedBy")
+  sessions        Session[]
+  approvedNotes   SoapNote[] @relation("ApprovedBy")
+  assignedReviews SoapNote[] @relation("AssignedReviewer")
 }
 
 model Patient {
@@ -114,20 +115,23 @@ model Transcript {
 }
 
 model SoapNote {
-  id             String         @id @default(uuid())
-  sessionId      String         @unique
-  subjective     String
-  objective      String
-  assessment     String
-  plan           String
-  workflowStatus WorkflowStatus @default(DRAFT)
-  approvedAt     DateTime?
-  approvedById   String?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id                 String         @id @default(uuid())
+  sessionId          String         @unique
+  subjective         String
+  objective          String
+  assessment         String
+  plan               String
+  workflowStatus     WorkflowStatus @default(DRAFT)
+  approvedAt         DateTime?
+  approvedById       String?
+  assignedReviewerId String?
+  reviewFeedback     String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
-  session    Session    @relation(fields: [sessionId], references: [id])
-  approvedBy Physician? @relation("ApprovedBy", fields: [approvedById], references: [id])
+  session          Session    @relation(fields: [sessionId], references: [id])
+  approvedBy       Physician? @relation("ApprovedBy", fields: [approvedById], references: [id])
+  assignedReviewer Physician? @relation("AssignedReviewer", fields: [assignedReviewerId], references: [id])
 }
 
 enum WorkflowStatus {

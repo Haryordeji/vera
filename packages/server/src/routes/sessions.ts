@@ -145,16 +145,61 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       where.archivedAt = null;
     }
 
-    const sessions = await prisma.session.findMany({
+    const ownedSessions = await prisma.session.findMany({
       where,
       include: {
         patient: true,
         physician: { select: { id: true, fullName: true } },
+        soapNote: {
+          include: {
+            assignedReviewer: { select: { id: true, fullName: true } },
+          },
+        },
       },
       orderBy: { recordedAt: "desc" },
     });
 
-    res.json(sessions);
+    if (scopeParam !== "mine") {
+      res.json(ownedSessions);
+      return;
+    }
+
+    // scope=mine also includes sessions where the current physician is the
+    // assignedReviewerId on a PENDING_REVIEW SOAP note.
+    const reviewWhere: Record<string, unknown> = {
+      physicianId: { not: physician.id },
+      soapNote: {
+        assignedReviewerId: physician.id,
+        workflowStatus: WorkflowStatus.PENDING_REVIEW,
+      },
+    };
+    if (!includeArchived) {
+      reviewWhere.archivedAt = null;
+    }
+
+    const assignedReviewSessions = await prisma.session.findMany({
+      where: reviewWhere,
+      include: {
+        patient: true,
+        physician: { select: { id: true, fullName: true } },
+        soapNote: {
+          include: {
+            assignedReviewer: { select: { id: true, fullName: true } },
+          },
+        },
+      },
+      orderBy: { recordedAt: "desc" },
+    });
+
+    const ownedIds = new Set(ownedSessions.map((s) => s.id));
+    const combined = [
+      ...ownedSessions.map((s) => ({ ...s, reviewAssignment: false })),
+      ...assignedReviewSessions
+        .filter((s) => !ownedIds.has(s.id))
+        .map((s) => ({ ...s, reviewAssignment: true })),
+    ];
+
+    res.json(combined);
   } catch (err) {
     next(err);
   }
@@ -183,7 +228,12 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
           select: { id: true, fullName: true, credentials: true },
         },
         transcript: true,
-        soapNote: { include: { approvedBy: true } },
+        soapNote: {
+          include: {
+            approvedBy: true,
+            assignedReviewer: { select: { id: true, fullName: true } },
+          },
+        },
         vitals: true,
         auditEvents: { orderBy: { createdAt: "asc" } },
       },
@@ -565,8 +615,12 @@ router.put("/:id/soap-note", async (req: Request, res: Response, next: NextFunct
   }
 });
 
-/** POST /api/sessions/:id/soap-note/submit-review — DRAFT → PENDING_REVIEW */
-router.post("/:id/soap-note/submit-review", async (req: Request, res: Response, next: NextFunction) => {
+/**
+ * POST /api/sessions/:id/soap-note/assign-review
+ * Owner assigns another physician as the reviewer. DRAFT → PENDING_REVIEW.
+ * Body: { reviewerId: string }
+ */
+router.post("/:id/soap-note/assign-review", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { userId } = getAuth(req);
     if (!userId) {
@@ -583,6 +637,12 @@ router.post("/:id/soap-note/submit-review", async (req: Request, res: Response, 
     const ownership = await requireSessionOwner(req.params.id, physician.id);
     if (!ownership.ok) {
       res.status(ownership.status).json({ error: ownership.error });
+      return;
+    }
+
+    const { reviewerId } = req.body as { reviewerId?: string };
+    if (!reviewerId || typeof reviewerId !== "string") {
+      res.status(400).json({ error: "reviewerId is required" });
       return;
     }
 
@@ -602,24 +662,46 @@ router.post("/:id/soap-note/submit-review", async (req: Request, res: Response, 
 
     if (session.soapNote.workflowStatus !== WorkflowStatus.DRAFT) {
       res.status(400).json({
-        error: `Cannot submit for review from status: ${session.soapNote.workflowStatus}`,
+        error: `Cannot assign for review from status: ${session.soapNote.workflowStatus}`,
       });
+      return;
+    }
+
+    if (reviewerId === physician.id) {
+      res.status(400).json({ error: "Cannot assign yourself as the reviewer." });
+      return;
+    }
+
+    const reviewer = await prisma.physician.findUnique({
+      where: { id: reviewerId },
+      select: { id: true, fullName: true },
+    });
+    if (!reviewer) {
+      res.status(400).json({ error: "Reviewer not found." });
       return;
     }
 
     const updatedNote = await prisma.$transaction(async (tx) => {
       const note = await tx.soapNote.update({
         where: { sessionId: session.id },
-        data: { workflowStatus: WorkflowStatus.PENDING_REVIEW },
-        include: { approvedBy: true },
+        data: {
+          workflowStatus: WorkflowStatus.PENDING_REVIEW,
+          assignedReviewerId: reviewer.id,
+          reviewFeedback: null,
+        },
+        include: {
+          approvedBy: true,
+          assignedReviewer: { select: { id: true, fullName: true } },
+        },
       });
 
       await tx.auditEvent.create({
         data: {
           sessionId: session.id,
-          eventType: "REVIEW_REQUESTED",
-          description: `Review requested by ${physician.fullName}`,
+          eventType: "REVIEW_ASSIGNED",
+          description: `Review assigned to ${reviewer.fullName} by ${physician.fullName}`,
           author: physician.fullName,
+          metadata: { assignedTo: reviewer.fullName },
         },
       });
 
@@ -632,7 +714,12 @@ router.post("/:id/soap-note/submit-review", async (req: Request, res: Response, 
   }
 });
 
-/** POST /api/sessions/:id/soap-note/approve — PENDING_REVIEW → APPROVED */
+/**
+ * POST /api/sessions/:id/soap-note/approve
+ * Two paths:
+ *   1. Owner self-approval from DRAFT
+ *   2. Assigned reviewer approval from PENDING_REVIEW
+ */
 router.post("/:id/soap-note/approve", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { userId } = getAuth(req);
@@ -647,14 +734,8 @@ router.post("/:id/soap-note/approve", async (req: Request, res: Response, next: 
       return;
     }
 
-    const ownership = await requireSessionOwner(req.params.id, physician.id);
-    if (!ownership.ok) {
-      res.status(ownership.status).json({ error: ownership.error });
-      return;
-    }
-
     const session = await prisma.session.findUnique({
-      where: { id: ownership.session.id },
+      where: { id: req.params.id },
       include: { soapNote: true },
     });
     if (!session) {
@@ -667,9 +748,25 @@ router.post("/:id/soap-note/approve", async (req: Request, res: Response, next: 
       return;
     }
 
-    if (session.soapNote.workflowStatus !== WorkflowStatus.PENDING_REVIEW) {
+    const isOwner = session.physicianId === physician.id;
+    const isAssignedReviewer =
+      session.soapNote.assignedReviewerId === physician.id;
+    const status = session.soapNote.workflowStatus;
+
+    if (!isOwner && !isAssignedReviewer) {
+      res.status(403).json({
+        error: "Only the session owner or the assigned reviewer can approve this note.",
+      });
+      return;
+    }
+
+    if (isAssignedReviewer && status === WorkflowStatus.PENDING_REVIEW) {
+      // Path 2 — reviewer approval
+    } else if (isOwner && status === WorkflowStatus.DRAFT) {
+      // Path 1 — owner self-approval
+    } else {
       res.status(400).json({
-        error: `Cannot approve from status: ${session.soapNote.workflowStatus}`,
+        error: `Cannot approve from status: ${status}`,
       });
       return;
     }
@@ -682,7 +779,10 @@ router.post("/:id/soap-note/approve", async (req: Request, res: Response, next: 
           approvedAt: new Date(),
           approvedById: physician.id,
         },
-        include: { approvedBy: true },
+        include: {
+          approvedBy: true,
+          assignedReviewer: { select: { id: true, fullName: true } },
+        },
       });
 
       await tx.session.update({
@@ -696,6 +796,92 @@ router.post("/:id/soap-note/approve", async (req: Request, res: Response, next: 
           eventType: "NOTE_APPROVED",
           description: `SOAP note approved by ${physician.fullName}`,
           author: physician.fullName,
+          metadata: { approvedBy: physician.fullName },
+        },
+      });
+
+      return note;
+    });
+
+    res.json(updatedNote);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/sessions/:id/soap-note/return-to-draft
+ * Assigned reviewer returns a PENDING_REVIEW note to DRAFT with optional feedback.
+ * Body: { feedback?: string }
+ */
+router.post("/:id/soap-note/return-to-draft", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+
+    const physician = await getPhysician(userId);
+    if (!physician) {
+      res.status(400).json({ error: "Physician profile not found." });
+      return;
+    }
+
+    const session = await prisma.session.findUnique({
+      where: { id: req.params.id },
+      include: { soapNote: true },
+    });
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    if (!session.soapNote) {
+      res.status(400).json({ error: "Session has no SOAP note." });
+      return;
+    }
+
+    if (session.soapNote.assignedReviewerId !== physician.id) {
+      res.status(403).json({
+        error: "Only the assigned reviewer can return this note to draft.",
+      });
+      return;
+    }
+
+    if (session.soapNote.workflowStatus !== WorkflowStatus.PENDING_REVIEW) {
+      res.status(400).json({
+        error: `Cannot return to draft from status: ${session.soapNote.workflowStatus}`,
+      });
+      return;
+    }
+
+    const rawFeedback = (req.body as { feedback?: unknown })?.feedback;
+    const feedback =
+      typeof rawFeedback === "string" && rawFeedback.trim().length > 0
+        ? rawFeedback.trim()
+        : null;
+
+    const updatedNote = await prisma.$transaction(async (tx) => {
+      const note = await tx.soapNote.update({
+        where: { sessionId: session.id },
+        data: {
+          workflowStatus: WorkflowStatus.DRAFT,
+          reviewFeedback: feedback,
+        },
+        include: {
+          approvedBy: true,
+          assignedReviewer: { select: { id: true, fullName: true } },
+        },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          sessionId: session.id,
+          eventType: "REVIEW_RETURNED",
+          description: `SOAP note returned to draft by ${physician.fullName}`,
+          author: physician.fullName,
+          metadata: { returnedBy: physician.fullName, feedback },
         },
       });
 

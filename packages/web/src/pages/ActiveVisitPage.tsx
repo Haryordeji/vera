@@ -168,19 +168,12 @@ export default function ActiveVisitPage() {
   }, [id, soapEdits, put, showToast, fetchAuditEvents]);
 
   const handleRequestReview = useCallback(async () => {
-    if (!id) return;
-    try {
-      const updated = await post<SoapNote>(`/sessions/${id}/soap-note/submit-review`);
-      setSession((prev) => (prev ? { ...prev, soapNote: updated } : prev));
-      showToast("Note submitted for review");
-      fetchAuditEvents();
-    } catch (err) {
-      showToast(
-        isForbiddenError(err) ? FORBIDDEN_TOAST : "Failed to submit for review",
-        "error"
-      );
-    }
-  }, [id, post, showToast, fetchAuditEvents]);
+    // The old DRAFT → PENDING_REVIEW self-submit flow has been replaced by
+    // reviewer assignment (see claude/assign-review-spec.md). The full
+    // AssignReviewDialog is pending frontend work; in the meantime this
+    // button is a no-op with an inline notice so nothing 404s.
+    showToast("Reviewer assignment UI coming soon — use Sign & Finalize for now", "error");
+  }, [showToast]);
 
   const handleApprove = useCallback(async () => {
     if (!id) return;

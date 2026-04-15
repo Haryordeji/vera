@@ -28,6 +28,20 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
+**Review Assignment Workflow (backend) — COMPLETE** (`claude/assign-review-spec.md`):
+- ✅ Schema: `SoapNote.assignedReviewerId String?` + `SoapNote.reviewFeedback String?` + `SoapNote.assignedReviewer Physician?` relation; `Physician.assignedReviews SoapNote[]` reverse relation. Migration `20260415125054_add_review_assignment` applied.
+- ✅ `POST /api/sessions/:id/soap-note/assign-review` — replaces the old `submit-review` endpoint. Body `{ reviewerId }`. Owner-only (via `requireSessionOwner`), requires current status `DRAFT`, rejects self-assignment (400), rejects unknown `reviewerId` (400). In a transaction: sets `workflowStatus = PENDING_REVIEW`, sets `assignedReviewerId`, clears `reviewFeedback`, writes `REVIEW_ASSIGNED` audit event with `metadata: { assignedTo: reviewer.fullName }`.
+- ✅ `POST /api/sessions/:id/soap-note/approve` — now supports two paths. Path 1: owner self-approval from `DRAFT` (same as before, stamps owner as `approvedBy`). Path 2: reviewer approval from `PENDING_REVIEW` — caller must be the `assignedReviewerId`. Either path flips `Session.status` → `COMPLETED` and writes `NOTE_APPROVED` audit with `metadata: { approvedBy: caller.fullName }`. 403 if caller is neither owner nor assigned reviewer; 400 if the status doesn't match the caller's role (e.g. owner trying to approve a PENDING_REVIEW note). Uses inline ownership check (not `requireSessionOwner`) so the reviewer — who is not the session owner — can legitimately approve.
+- ✅ `POST /api/sessions/:id/soap-note/return-to-draft` — new endpoint. Body `{ feedback?: string }`. Caller must be the `assignedReviewerId` (403 otherwise), current status must be `PENDING_REVIEW` (400 otherwise). Transaction: sets `workflowStatus = DRAFT`, stores trimmed feedback or `null`, keeps `assignedReviewerId` intact so the owner sees who returned it. Writes `REVIEW_RETURNED` audit event with `metadata: { returnedBy: reviewer.fullName, feedback }`.
+- ✅ `GET /api/sessions/:id` — `soapNote` response now includes `assignedReviewer: { id, fullName }` and `reviewFeedback`.
+- ✅ `GET /api/sessions?scope=mine` — now returns a union: owned sessions (marked `reviewAssignment: false`) plus sessions authored by other physicians where the caller is the `assignedReviewerId` on a `PENDING_REVIEW` SOAP note (marked `reviewAssignment: true`). Dedupe on id. Archive filter still applies to both sides. `scope=all` is unchanged.
+- ✅ Frontend-reference cleanup: `ActiveVisitPage.handleRequestReview` no longer calls the removed `submit-review` endpoint — placeholder toast. The `SoapWorkflowActions` UI, `AssignReviewDialog`, `ReviewFeedbackBanner`, `ReviewerActions`, and dashboard "Assigned to You for Review" section from the spec are deferred as a frontend follow-up.
+- ✅ Tests (`soapWorkflow.test.ts` rewritten; `crossPhysicianVisibility.test.ts` updated):
+  - `assign-review`: DRAFT→PENDING_REVIEW + metadata, 400 on wrong status, 403 on non-owner, 400 on self-assign, 400 on missing/unknown reviewerId, 401, 404.
+  - `approve`: Path 1 owner-from-DRAFT (stamps owner); Path 2 reviewer-from-PENDING_REVIEW (stamps reviewer + metadata); 403 non-owner/non-reviewer on DRAFT; 400 owner-on-PENDING_REVIEW; 400 already APPROVED; 401; 404.
+  - `return-to-draft`: happy path with feedback (stores feedback + keeps reviewer id + audit metadata); empty body → `null` feedback; 403 non-reviewer; 400 from DRAFT; 401; 404.
+  - `scope=mine`: includes sessions where caller is assigned reviewer with `reviewAssignment: true`; owned sessions marked `reviewAssignment: false`.
+
 **UX Fixes (Issue 5) — "Settings" → "My Profile" rename — COMPLETE** (`claude/ux-fixes-1-spec.md` §5):
 - ✅ `Sidebar` — nav item relabeled "Settings" → "My Profile"; icon swapped from `Settings` (gear) to `UserCircle` (profile). Route target updated to `/profile`.
 - ✅ Route — `/settings` now renders `<Navigate to="/profile" replace />` so any bookmarked/legacy `/settings` URL 302s to the new path. `/profile` renders the real page.

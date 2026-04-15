@@ -292,20 +292,23 @@ describe("Write endpoints reject non-owner with 403", () => {
     expect(res.body.error).toBe(NON_OWNER_ERROR);
   });
 
-  it("POST /soap-note/submit-review returns 403 for non-owner", async () => {
+  it("POST /soap-note/assign-review returns 403 for non-owner", async () => {
     const res = await request(app)
-      .post(`/api/sessions/${otherSessionId}/soap-note/submit-review`)
-      .set(OWNER_AUTH);
+      .post(`/api/sessions/${otherSessionId}/soap-note/assign-review`)
+      .set(OWNER_AUTH)
+      .send({ reviewerId: ownerId });
     expect(res.status).toBe(403);
     expect(res.body.error).toBe(NON_OWNER_ERROR);
   });
 
-  it("POST /soap-note/approve returns 403 for non-owner", async () => {
+  it("POST /soap-note/approve returns 403 for non-owner, non-reviewer", async () => {
+    // otherSessionId is a DRAFT owned by OTHER with no assigned reviewer.
+    // OWNER is neither owner nor reviewer, so approve must 403.
     const res = await request(app)
       .post(`/api/sessions/${otherSessionId}/soap-note/approve`)
       .set(OWNER_AUTH);
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe(NON_OWNER_ERROR);
+    expect(res.body.error).toMatch(/owner or the assigned reviewer/i);
   });
 
   it("POST /vitals returns 403 for non-owner", async () => {
@@ -340,21 +343,32 @@ describe("Write endpoints succeed for the owning physician", () => {
     expect(res.body.subjective).toBe("Updated by owner");
   });
 
-  it("POST /soap-note/submit-review succeeds for the owner", async () => {
+  it("POST /soap-note/assign-review succeeds for the owner", async () => {
     // ownerDraftSessionId still has DRAFT after the PUT above
     const res = await request(app)
-      .post(`/api/sessions/${ownerDraftSessionId}/soap-note/submit-review`)
-      .set(OWNER_AUTH);
+      .post(`/api/sessions/${ownerDraftSessionId}/soap-note/assign-review`)
+      .set(OWNER_AUTH)
+      .send({ reviewerId: otherId });
     expect(res.status).toBe(200);
     expect(res.body.workflowStatus).toBe("PENDING_REVIEW");
+    expect(res.body.assignedReviewerId).toBe(otherId);
   });
 
-  it("POST /soap-note/approve succeeds for the owner", async () => {
+  it("POST /soap-note/approve succeeds for the owner from DRAFT (self-approval)", async () => {
+    // ownerPendingSessionId was seeded as PENDING_REVIEW — but the new approve
+    // endpoint requires an assigned reviewer for PENDING_REVIEW, not the owner.
+    // Reset to DRAFT so owner can self-approve.
+    await prisma.soapNote.update({
+      where: { sessionId: ownerPendingSessionId },
+      data: { workflowStatus: WorkflowStatus.DRAFT, assignedReviewerId: null },
+    });
+
     const res = await request(app)
       .post(`/api/sessions/${ownerPendingSessionId}/soap-note/approve`)
       .set(OWNER_AUTH);
     expect(res.status).toBe(200);
     expect(res.body.workflowStatus).toBe("APPROVED");
+    expect(res.body.approvedById).toBe(ownerId);
   });
 
   it("POST /vitals succeeds for the owner", async () => {

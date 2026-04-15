@@ -3,6 +3,78 @@
 ---
 
 ## 2026-04-15
+### Entry #30 — Feature: Review Assignment Workflow (backend)
+
+Implements the backend half of `claude/assign-review-spec.md` — physician-to-physician review assignment for SOAP notes. The owning physician can still self-approve from DRAFT, but can also now assign another physician to review the note. The assigned reviewer either approves & signs, or returns it to draft with feedback. The full frontend UI (AssignReviewDialog, ReviewerActions, ReviewFeedbackBanner, dashboard "Assigned to You for Review" section) is deferred to a follow-up session — a minimal patch in `ActiveVisitPage` removes the now-broken `/submit-review` call so nothing 404s in the interim.
+
+**Schema (`20260415125054_add_review_assignment`):**
+- `SoapNote.assignedReviewerId String?`
+- `SoapNote.reviewFeedback String?`
+- `SoapNote.assignedReviewer Physician? @relation("AssignedReviewer", …)`
+- `Physician.assignedReviews SoapNote[] @relation("AssignedReviewer")` (reverse relation)
+
+**Routes (`packages/server/src/routes/sessions.ts`):**
+- **Replaced** `POST /:id/soap-note/submit-review` with `POST /:id/soap-note/assign-review`.
+  - Body: `{ reviewerId }`.
+  - Guards: authenticated + physician resolved, owner-only via `requireSessionOwner`, note exists, status is `DRAFT`, `reviewerId` is a real physician AND not the caller themselves.
+  - Transaction: `workflowStatus = PENDING_REVIEW`, `assignedReviewerId = reviewerId`, `reviewFeedback = null` (so reassigning after a return clears the old feedback), writes `REVIEW_ASSIGNED` audit event with `metadata: { assignedTo: reviewer.fullName }`.
+- **Modified** `POST /:id/soap-note/approve` — now supports two distinct paths.
+  - Not using `requireSessionOwner` directly, because Path 2 legitimately runs as a non-owner. Instead fetches the session + soapNote and checks ownership inline.
+  - Path 1 (self-approval): caller is session owner AND current status is `DRAFT`.
+  - Path 2 (reviewer approval): caller is the `assignedReviewerId` AND current status is `PENDING_REVIEW`.
+  - Rejection logic: 403 if caller is neither owner nor assigned reviewer; 400 if the state doesn't match the role (e.g. owner trying to approve from `PENDING_REVIEW`, which is reserved for the assigned reviewer).
+  - Both paths: `workflowStatus = APPROVED`, stamp `approvedAt` + `approvedById` (caller's id), flip `Session.status` → `COMPLETED`, write `NOTE_APPROVED` audit event with `metadata: { approvedBy: caller.fullName }`.
+- **New** `POST /:id/soap-note/return-to-draft`.
+  - Body: `{ feedback?: string }`.
+  - Guards: authenticated + physician resolved, note exists, caller is the `assignedReviewerId` (403 otherwise), current status is `PENDING_REVIEW` (400 otherwise).
+  - Trims the feedback string; stores `null` when the body is empty/blank. Keeps `assignedReviewerId` intact so the owner can see who returned the note and optionally re-submit to the same reviewer.
+  - Transaction: status → `DRAFT`, stores feedback, writes `REVIEW_RETURNED` audit event with `metadata: { returnedBy: reviewer.fullName, feedback }`.
+- `GET /:id` — `soapNote` include now selects `assignedReviewer: { id, fullName }` alongside `approvedBy`, so the client receives both. `reviewFeedback` is returned implicitly as part of the SoapNote row.
+- `GET /` (list) — when `scope=mine`, the response is now a union:
+  - The original owned query, tagged `reviewAssignment: false` on each row.
+  - A second query for sessions where `soapNote.assignedReviewerId === caller.id` AND `soapNote.workflowStatus === PENDING_REVIEW` AND `physicianId !== caller.id` (excludes the degenerate case where someone is both owner and reviewer — impossible via `assign-review` but defensive). Tagged `reviewAssignment: true`.
+  - Dedupe by session id (owned rows win). Archive filter applies to both sides. `status`/`search`/`physician` query params still apply to the owned side only — the review queue comes in regardless so the dashboard always sees pending reviewer work.
+  - `scope=all` is unchanged.
+
+**Frontend (minimal reference cleanup):**
+- `ActiveVisitPage.handleRequestReview` no longer posts to the removed `/submit-review` endpoint. It now shows an inline toast ("Reviewer assignment UI coming soon — use Sign & Finalize for now") as a placeholder. This keeps the existing `SoapWorkflowActions` UI from crashing while the real `AssignReviewDialog` is built in a follow-up session.
+- `SoapWorkflowActions`, `soapWorkflow.test.tsx`, and `AuditTimeline` (which still knows about the legacy `REVIEW_REQUESTED` event type) are intentionally untouched — those will be rewritten as part of the frontend follow-up.
+
+**Tests:**
+- Rewrote `packages/server/src/__tests__/soapWorkflow.test.ts`:
+  - New `createDraftSession` / `createPendingReviewSession` helpers so individual tests can seed their own fixture rows without cross-contamination.
+  - Added a second physician (`Dr. Workflow Reviewer`) to the `beforeAll`, with its own clerk id and `REVIEWER_AUTH` header.
+  - `assign-review` block (7 tests): happy path (checks status transition, assignedReviewerId, assignedReviewer.fullName on response, null reviewFeedback, and `REVIEW_ASSIGNED` audit `metadata.assignedTo`); 400 wrong status; 403 non-owner; 400 self-assign; 400 missing and 400 unknown reviewerId; 401; 404.
+  - `approve` block (7 tests): Path 1 owner self-approval from DRAFT (stamps owner, session COMPLETED, audit event); Path 2 reviewer approval from PENDING_REVIEW (stamps reviewer as `approvedBy`, audit `metadata.approvedBy`); 403 for non-owner/non-reviewer on a DRAFT; 400 for owner trying to approve a PENDING_REVIEW; 400 when already APPROVED; 401; 404.
+  - `return-to-draft` block (6 tests): happy path with feedback (transitions to DRAFT, stores feedback, keeps assignedReviewerId, audit metadata); empty body → null feedback; 403 non-reviewer; 400 from DRAFT; 401; 404.
+  - `scope=mine review assignments` block (2 tests): caller sees the pending-review session they're assigned to, flagged `reviewAssignment: true` and owned by the other physician; owned rows are marked `reviewAssignment: false`.
+- Updated `packages/server/src/__tests__/crossPhysicianVisibility.test.ts`:
+  - Renamed `submit-review` 403 test to `assign-review` 403 (now sends `{ reviewerId }` in the body).
+  - `approve` 403 test now tests "non-owner, non-reviewer" (since approve no longer blindly 403s via `requireSessionOwner`); asserts the new "owner or the assigned reviewer" error message.
+  - Owner success paths: `assign-review` happy path sends `{ reviewerId: otherId }` and asserts `assignedReviewerId === otherId`. The old `approve from PENDING_REVIEW` owner test was reworked: the pending session is first reset to DRAFT so the owner can self-approve (since the new approve gate blocks owners from approving PENDING_REVIEW notes — that's the reviewer's job now).
+
+**Typecheck:** server clean (EXIT 0). Web has only the two pre-existing `TS6133` unused-import warnings in `soapWorkflow.test.tsx` and `SoapWorkflowActions.tsx` (carried from earlier entries). No new errors introduced.
+
+**Test suite:** Not running `npx vitest run` — user verifies manually (times out in this harness, per entry #29 pattern).
+
+**Follow-up work (frontend):**
+- `AssignReviewDialog` with physician dropdown + `POST assign-review` call
+- `ReviewerActions` component (Approve & Sign / Return to Draft with inline textarea)
+- `ReviewFeedbackBanner` on returned-to-draft notes
+- `SoapWorkflowActions` button matrix rewrite to distinguish owner/reviewer viewers
+- Dashboard "Assigned to You for Review" section using `reviewAssignment: true` rows from `scope=mine`
+- Swap `REVIEW_REQUESTED` → `REVIEW_ASSIGNED` in `AuditTimeline`; add `REVIEW_RETURNED` handling
+
+**Key files modified:**
+- `packages/server/prisma/schema.prisma` + `prisma/migrations/20260415125054_add_review_assignment/migration.sql`
+- `packages/server/src/routes/sessions.ts`
+- `packages/server/src/__tests__/soapWorkflow.test.ts`, `crossPhysicianVisibility.test.ts`
+- `packages/web/src/pages/ActiveVisitPage.tsx` (minimal reference cleanup)
+- `CLAUDE.md`
+
+---
+
+## 2026-04-15
 ### Entry #29 — Fix: patients integration tests leaking ghost rows into dev DB
 
 **Symptom:** "Alice Updated" (with `mrn = NULL`) was appearing in the dev database even after clean test runs.
