@@ -55,7 +55,8 @@ function makeSession(
   id: string,
   status: SessionStatus,
   recordedAt: string,
-  patientName = "Jane Doe"
+  patientName = "Jane Doe",
+  overrides: Partial<Session> = {}
 ): Session {
   return {
     id,
@@ -67,7 +68,30 @@ function makeSession(
     createdAt: recordedAt,
     updatedAt: recordedAt,
     patient: makePatient(patientName),
+    reviewAssignment: false,
+    ...overrides,
   };
+}
+
+function makeReviewAssignment(
+  id: string,
+  patientName: string,
+  ownerName: string,
+  recordedAt: string
+): Session {
+  return makeSession(id, "IN_REVIEW", recordedAt, patientName, {
+    physicianId: `phys-${ownerName}`,
+    reviewAssignment: true,
+    physician: {
+      id: `phys-${ownerName}`,
+      clerkId: `clerk-${ownerName}`,
+      fullName: ownerName,
+      email: `${ownerName}@example.com`,
+      credentials: null,
+      createdAt: "",
+      updatedAt: "",
+    },
+  });
 }
 
 function renderPage() {
@@ -114,18 +138,80 @@ describe("DashboardPage", () => {
       makeSession("s6", "COMPLETED", ISO_3_DAYS_AGO), // within week
       makeSession("s7", "COMPLETED", ISO_3_DAYS_AGO), // within week
       makeSession("s8", "COMPLETED", ISO_10_DAYS_AGO), // older than a week
+      makeReviewAssignment("r1", "Alice Brown", "James Lee", ISO_NOW),
+      makeReviewAssignment("r2", "Bob Chen", "James Lee", ISO_NOW),
     ]);
 
     renderPage();
 
-    // In Progress = RECORDING + TRANSCRIBING + GENERATING_NOTE = 3
+    // In Progress = RECORDING + TRANSCRIBING + GENERATING_NOTE (owned only) = 3
     await waitFor(() =>
       expect(screen.getByTestId("stat-in-progress-value")).toHaveTextContent("3")
     );
-    // Awaiting Review = IN_REVIEW count = 2
-    expect(screen.getByTestId("stat-awaiting-review-value")).toHaveTextContent("2");
-    // Completed This Week = 2 (third is older than 7 days)
+    // Awaiting Your Sign-off = number of reviewAssignment rows = 2
+    expect(
+      screen.getByTestId("stat-awaiting-signoff-value")
+    ).toHaveTextContent("2");
+    // Completed This Week = 2 (third owned completed is older than 7 days)
     expect(screen.getByTestId("stat-completed-this-week-value")).toHaveTextContent("2");
+  });
+
+  it("shows the 'Assigned to You for Review' section when review assignments exist", async () => {
+    mockGet.mockResolvedValue([
+      makeSession("active-1", "RECORDING", ISO_NOW, "My Patient"),
+      makeReviewAssignment("r1", "Alice Brown", "James Lee", ISO_NOW),
+    ]);
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("assigned-for-review-section")
+      ).toBeInTheDocument()
+    );
+    const cards = screen.getAllByTestId("review-assignment-card");
+    expect(cards).toHaveLength(1);
+    expect(screen.getByText("Alice Brown")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("review-assignment-card-meta")
+    ).toHaveTextContent(/Dr\. James Lee/);
+    expect(
+      screen.getByTestId("review-assignment-card-meta")
+    ).toHaveTextContent(/SOAP note waiting for your sign-off/i);
+  });
+
+  it("hides the 'Assigned to You for Review' section when there are no assignments", async () => {
+    mockGet.mockResolvedValue([
+      makeSession("active-1", "RECORDING", ISO_NOW, "My Patient"),
+    ]);
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("active-sessions-list")).toBeInTheDocument()
+    );
+    expect(
+      screen.queryByTestId("assigned-for-review-section")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("stat-awaiting-signoff-value")
+    ).toHaveTextContent("0");
+  });
+
+  it("does not count review assignments in the 'In Progress' stat", async () => {
+    mockGet.mockResolvedValue([
+      makeReviewAssignment("r1", "Alice Brown", "James Lee", ISO_NOW),
+      makeReviewAssignment("r2", "Bob Chen", "James Lee", ISO_NOW),
+    ]);
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("stat-in-progress-value")).toHaveTextContent("0")
+    );
+    expect(
+      screen.getByTestId("stat-awaiting-signoff-value")
+    ).toHaveTextContent("2");
   });
 
   it("only shows non-completed sessions in the active list", async () => {

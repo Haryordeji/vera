@@ -3,11 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ActiveSessionCard } from "@/components/visit/ActiveSessionCard";
+import { ReviewAssignmentCard } from "@/components/visit/ReviewAssignmentCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ListError } from "@/components/ui/ListError";
 import { useApi } from "@/lib/api";
 import type { Session, SessionStatus } from "@/lib/types";
-import { Plus, Loader2, ClipboardCheck, CheckCircle2, ArrowRight } from "lucide-react";
+import { Plus, Loader2, UserCheck, CheckCircle2, ArrowRight } from "lucide-react";
 
 const IN_PROGRESS_STATUSES: SessionStatus[] = [
   "RECORDING",
@@ -46,17 +47,22 @@ export default function DashboardPage() {
 
   const firstName = user?.firstName ?? "";
 
-  const inProgressCount = sessions.filter((s) =>
+  // Split the union response: owned sessions (reviewAssignment false/undefined)
+  // vs sessions where the current physician is the assigned reviewer.
+  const ownedSessions = sessions.filter((s) => !s.reviewAssignment);
+  const reviewAssignments = sessions.filter((s) => s.reviewAssignment);
+
+  const inProgressCount = ownedSessions.filter((s) =>
     IN_PROGRESS_STATUSES.includes(s.status)
   ).length;
-  const awaitingReviewCount = sessions.filter((s) => s.status === "IN_REVIEW").length;
+  const awaitingSignOffCount = reviewAssignments.length;
 
   const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const completedThisWeek = sessions.filter(
+  const completedThisWeek = ownedSessions.filter(
     (s) => s.status === "COMPLETED" && new Date(s.recordedAt).getTime() >= weekAgo
   ).length;
 
-  const activeSessions = sessions.filter((s) => s.status !== "COMPLETED");
+  const activeSessions = ownedSessions.filter((s) => s.status !== "COMPLETED");
 
   return (
     <AppLayout title="Dashboard">
@@ -84,10 +90,10 @@ export default function DashboardPage() {
             loading={loading}
           />
           <StatCard
-            testId="stat-awaiting-review"
-            label="Awaiting Review"
-            value={awaitingReviewCount}
-            icon={ClipboardCheck}
+            testId="stat-awaiting-signoff"
+            label="Awaiting Your Sign-off"
+            value={awaitingSignOffCount}
+            icon={UserCheck}
             loading={loading}
           />
           <StatCard
@@ -163,6 +169,28 @@ export default function DashboardPage() {
               {activeSessions.map((s) => (
                 <ActiveSessionCard key={s.id} session={s} />
               ))}
+            </div>
+          )}
+
+          {/* Assigned to You for Review — hidden entirely when empty */}
+          {!loading && !error && reviewAssignments.length > 0 && (
+            <div
+              data-testid="assigned-for-review-section"
+              className="mt-8"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+                  Assigned to You for Review
+                </h3>
+              </div>
+              <div
+                data-testid="assigned-for-review-list"
+                className="space-y-2"
+              >
+                {reviewAssignments.map((s) => (
+                  <ReviewAssignmentCard key={s.id} session={s} />
+                ))}
+              </div>
             </div>
           )}
 

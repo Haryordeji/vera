@@ -3,6 +3,79 @@
 ---
 
 ## 2026-04-15
+### Entry #33 — Feature: Review Assignment Dashboard + Audit Timeline
+
+Closes out `claude/assign-review-spec.md`. With Entries #30 (backend), #31 (owner workflow UI), and #32 (reviewer experience + feedback banner) in place, this entry ships the dashboard "Assigned to You for Review" section, the "Awaiting Your Sign-off" stat, and the audit timeline treatment for `REVIEW_ASSIGNED` + `REVIEW_RETURNED`. End-to-end the feature is now demoable: Physician A → Assign for Review → Physician B's dashboard shows the pending review → B opens the visit (reviewer banner + reviewer actions) → Return to Draft with feedback → A sees the feedback banner → re-assign or self-approve → audit trail tells the whole story.
+
+**Types (`packages/web/src/lib/types.ts`):**
+- `Session.reviewAssignment?: boolean` — marker from the backend union in `GET /sessions?scope=mine`. `true` when the row is included because the caller is the assigned reviewer on a `PENDING_REVIEW` note authored by someone else.
+
+**New component (`packages/web/src/components/visit/ReviewAssignmentCard.tsx`):**
+- Patient name + recorded date on the first line. Meta line: "Dr. {owner} 's session · SOAP note waiting for your sign-off." Status badge `IN_REVIEW` on the right.
+- Blue `UserCheck` avatar to visually distinguish from `ActiveSessionCard` (which uses a neutral `UserRound`).
+- Click navigates to `/visits/:id`, which — because the caller is the `assignedReviewer` on the note — renders the reviewer banner and reviewer actions from Entries #31/#32.
+- Testids: `review-assignment-card`, `review-assignment-card-meta`.
+
+**`DashboardPage` (`packages/web/src/pages/DashboardPage.tsx`):**
+- Split the fetched list: `ownedSessions = sessions.filter(s => !s.reviewAssignment)` vs `reviewAssignments = sessions.filter(s => s.reviewAssignment)`.
+- Stats (`quick-stats`):
+  - `stat-in-progress` — `RECORDING`/`TRANSCRIBING`/`GENERATING_NOTE` in `ownedSessions` (unchanged semantics).
+  - `stat-awaiting-signoff` — **new**, `reviewAssignments.length`. Replaces the old `stat-awaiting-review` (which counted the caller's own `IN_REVIEW` sessions; that concept didn't survive the shift to reviewer-driven sign-off). Icon: `UserCheck`.
+  - `stat-completed-this-week` — owned `COMPLETED` sessions within 7 days (unchanged).
+- New "Assigned to You for Review" section (`assigned-for-review-section`) renders below "Your Active Sessions" **only when `reviewAssignments.length > 0`** — hidden entirely when empty, no empty state (spec says the section should vanish). Also hidden during `loading` and `error` so it doesn't flash in over skeletons or crash if the initial fetch fails.
+- "Your Active Sessions" list now filters from `ownedSessions` instead of the full response, so a review assignment never leaks into the owner's active queue even though it shares the `IN_REVIEW` status.
+
+**`AuditTimeline` (`packages/web/src/components/audit/AuditTimeline.tsx`):**
+- Dropped `Eye` (used only by the retired `REVIEW_REQUESTED` visual); added `Send` + `CornerUpLeft` imports.
+- `REVIEW_ASSIGNED` — `Send` icon in a sky-500 circle, "Assigned" badge (sky-100 text-sky-700). Description from backend already reads "Review assigned to Dr. X by Dr. Y".
+- `REVIEW_RETURNED` — `CornerUpLeft` icon in an amber-500 circle, "Returned" badge (amber-100 text-amber-700).
+- `REVIEW_RETURNED` rows now render the reviewer's feedback inline as a styled `<blockquote>` (amber border-left, italic, `whitespace-pre-wrap`) when `metadata.feedback` is a non-empty string — testid `audit-event-feedback-${i}`. The existing "Show details" toggle still exposes the raw metadata for power users.
+- Legacy `REVIEW_REQUESTED` events (from before the assign-review migration) fall through onto the same visual treatment as `REVIEW_ASSIGNED` via a shared `case` label, so old audit trails render gracefully without a DB migration.
+- `NOTE_APPROVED` visual is unchanged; the `metadata.approvedBy` field is already reflected in the backend-authored description.
+
+**Cleanup audit:**
+- `rg submit-review|REVIEW_REQUESTED` across `packages/web/src` → only remaining hit is a negative assertion in `ownership.test.tsx` (`expect(screen.queryByText("Request Review")).not.toBeInTheDocument()`) which is still a valid absence check, so it was left alone.
+- Backend is already clean (Entry #30 replaced the `submit-review` route; no stray references in `packages/server/src`).
+
+**Tests:**
+- `packages/web/src/__tests__/dashboard.test.tsx`:
+  - New `makeReviewAssignment(id, patientName, ownerName, recordedAt)` helper that sets `reviewAssignment: true`, a synthetic `physician` record, and different `physicianId` so it doesn't collide with the caller.
+  - Updated quick-stats test to seed 2 review assignments and assert `stat-awaiting-signoff-value === "2"` + `stat-in-progress-value === "3"` (proving the split works). Removed the old `stat-awaiting-review` assertion.
+  - New test: "shows 'Assigned to You for Review' section when review assignments exist" — seeds 1 active owned + 1 review assignment, asserts `assigned-for-review-section` + 1 `review-assignment-card` + patient name + owner name + waiting-for-sign-off copy.
+  - New test: "hides the 'Assigned to You for Review' section when there are no assignments" — section is absent and sign-off stat reads `0`.
+  - New test: "does not count review assignments in the 'In Progress' stat" — 2 review assignments only, in-progress = 0, sign-off = 2.
+  - Existing empty-state, greeting, CTA, sidebar-badge, and action-needed tests remain as-is (the sidebar badge still counts non-completed sessions including review assignments, which is intentional).
+- `packages/web/src/__tests__/auditTimeline.test.tsx`:
+  - Renamed the `REVIEW_REQUESTED` sample event to `REVIEW_ASSIGNED` with matching metadata (`{ assignedTo: "Dr. Lee" }`) and description.
+  - Icon+badge assertions retargeted to `REVIEW_ASSIGNED`.
+  - New test: legacy `REVIEW_REQUESTED` event renders with the same "Assigned" badge (backward compatibility).
+  - New test: `REVIEW_RETURNED` event renders with "Returned" badge and inline `audit-event-feedback-0` blockquote containing the feedback text.
+  - New test: `NOTE_APPROVED` renders its approver description + "Signed" badge.
+
+**Verification:** `cd packages/web && npx tsc --noEmit` → clean (EXIT=0). Vitest deferred per session convention.
+
+**Manual E2E path:**
+1. Sign in as Physician A. Create a visit → record → auto-transcribe + generate SOAP → DRAFT.
+2. Click **Assign for Review** → select Physician B → toast "Assigned to Dr. B for review." Status flips to `PENDING_REVIEW`; audit trail shows `REVIEW_ASSIGNED` (sky send icon, "Assigned" badge).
+3. Sign in as Physician B. Dashboard shows the visit under **Assigned to You for Review** with "Dr. A's session · SOAP note waiting for your sign-off"; stats show `Awaiting Your Sign-off: 1`.
+4. Click into the visit → ownership banner reads "You are reviewing this note." (UserCheck icon, blue). SOAP content is read-only (textareas have `readonly` attribute). Reviewer actions panel shows **Approve & Sign** + **Return to Draft**.
+5. Click **Return to Draft** → type "Please expand the assessment" → Submit. Toast confirms; status flips back to `DRAFT`; audit trail shows `REVIEW_RETURNED` (amber CornerUpLeft icon, "Returned" badge, inline italic blockquote with the feedback).
+6. Sign in as Physician A. Visit now DRAFT; `ReviewFeedbackBanner` (amber) above the SOAP editor reads "Dr. B returned this note for revision:" + the feedback quote. Edit the SOAP → **Assign for Review** again (banner clears because the backend nulls `reviewFeedback` on re-assign).
+7. Sign in as Physician B. Approve & Sign → confirm dialog → toast "SOAP note approved and finalized." Status flips to `APPROVED`; session → `COMPLETED`; audit trail shows `NOTE_APPROVED` (emerald checkmark, "Signed" badge, description "SOAP note approved by Dr. B").
+8. Both physicians can find the visit in **Past Visits** (practice-wide archive). The SOAP note is fully locked; no workflow buttons render; the audit trail shows the complete cycle: Created → Audio → Transcript → Draft → Assigned → Returned → Edited → Assigned → Signed.
+
+**Key files:**
+- `packages/web/src/lib/types.ts`
+- `packages/web/src/components/visit/ReviewAssignmentCard.tsx` (new)
+- `packages/web/src/pages/DashboardPage.tsx`
+- `packages/web/src/components/audit/AuditTimeline.tsx`
+- `packages/web/src/__tests__/dashboard.test.tsx`
+- `packages/web/src/__tests__/auditTimeline.test.tsx`
+- `CLAUDE.md`
+
+---
+
+## 2026-04-15
 ### Entry #32 — Feature: Review Feedback Banner + Reviewer Experience
 
 Closes the review cycle loop in the UI. The assigned reviewer now gets a context-aware ownership banner ("You are reviewing this note.") instead of the generic "read-only" language, and when they click Return to Draft the owner sees the reviewer's feedback in a new `ReviewFeedbackBanner` pinned above the SOAP editor until the note is re-assigned or self-approved. Replaces the inline amber banner that was sketched in Entry #31.

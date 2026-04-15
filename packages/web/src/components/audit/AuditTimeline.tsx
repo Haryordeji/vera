@@ -5,7 +5,8 @@ import {
   FileText,
   Sparkles,
   PenLine,
-  Eye,
+  Send,
+  CornerUpLeft,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -61,12 +62,23 @@ function getEventConfig(eventType: string): EventConfig {
         badge: "Edited",
         badgeColor: "bg-orange-100 text-orange-700",
       };
+    // REVIEW_REQUESTED is the legacy event type from before the assign-review
+    // workflow — keep it rendering gracefully for historical audit trails by
+    // aliasing it onto the same visual treatment as REVIEW_ASSIGNED.
     case "REVIEW_REQUESTED":
+    case "REVIEW_ASSIGNED":
       return {
-        icon: <Eye className="w-3 h-3" />,
-        iconBg: "bg-sky-400",
-        badge: "In Review",
+        icon: <Send className="w-3 h-3" />,
+        iconBg: "bg-sky-500",
+        badge: "Assigned",
         badgeColor: "bg-sky-100 text-sky-700",
+      };
+    case "REVIEW_RETURNED":
+      return {
+        icon: <CornerUpLeft className="w-3 h-3" />,
+        iconBg: "bg-amber-500",
+        badge: "Returned",
+        badgeColor: "bg-amber-100 text-amber-700",
       };
     case "NOTE_APPROVED":
       return {
@@ -179,6 +191,19 @@ export function AuditTimeline({ events }: Props) {
                   <span className="text-slate-300">·</span>{" "}
                   {event.author}
                 </p>
+
+                {/* REVIEW_RETURNED — surface the reviewer's feedback inline */}
+                {event.eventType === "REVIEW_RETURNED" &&
+                  typeof (event.metadata as { feedback?: unknown } | null)
+                    ?.feedback === "string" &&
+                  (event.metadata as { feedback: string }).feedback.trim() && (
+                    <blockquote
+                      data-testid={`audit-event-feedback-${i}`}
+                      className="mt-2 border-l-2 border-amber-300 pl-2.5 text-xs italic text-amber-900 whitespace-pre-wrap"
+                    >
+                      {(event.metadata as { feedback: string }).feedback}
+                    </blockquote>
+                  )}
 
                 {/* Metadata toggle */}
                 {hasMetadata && (

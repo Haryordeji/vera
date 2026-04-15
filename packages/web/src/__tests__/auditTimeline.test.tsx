@@ -55,9 +55,10 @@ const SAMPLE_EVENTS: AuditEvent[] = [
   }),
   makeEvent({
     id: "e6",
-    eventType: "REVIEW_REQUESTED",
-    description: "Review requested by Dr. Smith",
+    eventType: "REVIEW_ASSIGNED",
+    description: "Review assigned to Dr. Lee by Dr. Smith",
     author: "Dr. Smith",
+    metadata: { assignedTo: "Dr. Lee" } as any,
     createdAt: "2026-04-10T14:11:00Z",
   }),
   makeEvent({
@@ -111,7 +112,7 @@ describe("AuditTimeline — event rendering", () => {
     expect(screen.getByTestId("audit-event-icon-TRANSCRIPT_GENERATED")).toBeInTheDocument();
     expect(screen.getByTestId("audit-event-icon-SOAP_DRAFT_CREATED")).toBeInTheDocument();
     expect(screen.getByTestId("audit-event-icon-SOAP_EDITED")).toBeInTheDocument();
-    expect(screen.getByTestId("audit-event-icon-REVIEW_REQUESTED")).toBeInTheDocument();
+    expect(screen.getByTestId("audit-event-icon-REVIEW_ASSIGNED")).toBeInTheDocument();
     expect(screen.getByTestId("audit-event-icon-NOTE_APPROVED")).toBeInTheDocument();
   });
 });
@@ -134,9 +135,77 @@ describe("AuditTimeline — badges", () => {
     expect(badge.className).toContain("yellow");
   });
 
-  it("shows 'In Review' badge for REVIEW_REQUESTED", () => {
+  it("shows 'Assigned' badge for REVIEW_ASSIGNED", () => {
     render(<AuditTimeline events={SAMPLE_EVENTS} />);
-    expect(screen.getByTestId("audit-event-badge-REVIEW_REQUESTED")).toHaveTextContent("In Review");
+    expect(screen.getByTestId("audit-event-badge-REVIEW_ASSIGNED")).toHaveTextContent("Assigned");
+  });
+
+  it("renders legacy REVIEW_REQUESTED events with the same Assigned treatment", () => {
+    render(
+      <AuditTimeline
+        events={[
+          makeEvent({
+            id: "legacy-1",
+            eventType: "REVIEW_REQUESTED",
+            description: "Review requested by Dr. Smith",
+          }),
+        ]}
+      />
+    );
+    expect(
+      screen.getByTestId("audit-event-icon-REVIEW_REQUESTED")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("audit-event-badge-REVIEW_REQUESTED")
+    ).toHaveTextContent("Assigned");
+  });
+
+  it("renders REVIEW_RETURNED with a Returned badge and inline feedback", () => {
+    render(
+      <AuditTimeline
+        events={[
+          makeEvent({
+            id: "returned-1",
+            eventType: "REVIEW_RETURNED",
+            description: "SOAP note returned to draft by Dr. Lee",
+            metadata: {
+              returnedBy: "Dr. Lee",
+              feedback: "Please clarify the assessment.",
+            } as any,
+          }),
+        ]}
+      />
+    );
+    expect(
+      screen.getByTestId("audit-event-icon-REVIEW_RETURNED")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("audit-event-badge-REVIEW_RETURNED")
+    ).toHaveTextContent("Returned");
+    expect(screen.getByTestId("audit-event-feedback-0")).toHaveTextContent(
+      /clarify the assessment/i
+    );
+  });
+
+  it("renders NOTE_APPROVED showing the signer", () => {
+    render(
+      <AuditTimeline
+        events={[
+          makeEvent({
+            id: "approved-1",
+            eventType: "NOTE_APPROVED",
+            description: "SOAP note approved by Dr. Lee",
+            metadata: { approvedBy: "Dr. Lee" } as any,
+          }),
+        ]}
+      />
+    );
+    expect(
+      screen.getByText("SOAP note approved by Dr. Lee")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("audit-event-badge-NOTE_APPROVED")
+    ).toHaveTextContent("Signed");
   });
 
   it("shows 'Audio' badge for AUDIO_CAPTURED", () => {

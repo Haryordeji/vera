@@ -124,6 +124,10 @@ export interface Session {
   soapNote?: SoapNote | null;
   vitals?: Vitals | null;
   auditEvents?: AuditEvent[];
+  // Set by GET /api/sessions?scope=mine: true when this row is included
+  // because the caller is the assigned reviewer on a PENDING_REVIEW note
+  // rather than the session owner.
+  reviewAssignment?: boolean;
 }
 
 export interface Physician {
