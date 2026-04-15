@@ -142,3 +142,4 @@ vite.config.ts.timestamp-*
 # local dev
 prompts.md
 session-transcripts/
+patient-page-feat-prompts.md
