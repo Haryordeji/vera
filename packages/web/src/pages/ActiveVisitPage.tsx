@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/visit/StatusBadge";
 import { AudioRecorder } from "@/components/audio/AudioRecorder";
+import { AudioPlayback } from "@/components/audio/AudioPlayback";
 import { TranscriptViewer } from "@/components/transcript/TranscriptViewer";
 import type { Utterance } from "@/components/transcript/TranscriptViewer";
 import { SoapNoteEditor } from "@/components/soap/SoapNoteEditor";
@@ -440,14 +441,22 @@ export default function ActiveVisitPage() {
               Audio Recording
             </h3>
           </div>
-          {id ? (
+          {!id ? (
+            <p className="text-sm text-slate-400">No session ID.</p>
+          ) : session?.audioFileUrl ? (
+            <AudioPlayback sessionId={id} />
+          ) : isOwner ? (
             <AudioRecorder
               sessionId={id}
               onUploadComplete={handleUploadComplete}
-              readOnly={!isOwner}
             />
           ) : (
-            <p className="text-sm text-slate-400">No session ID.</p>
+            <p
+              data-testid="audio-empty-state"
+              className="text-sm text-slate-400"
+            >
+              No audio recorded for this visit.
+            </p>
           )}
         </section>
 

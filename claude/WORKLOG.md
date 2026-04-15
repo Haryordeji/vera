@@ -3,6 +3,41 @@
 ---
 
 ## 2026-04-15
+### Entry #34 — Bugfix: Vitals preservation through pipeline + audio playback on completed visits
+
+Two distinct bugs surfaced by the reviewer-workflow demo pass, addressed in one pass because they share the same file (`packages/server/src/routes/sessions.ts`).
+
+**Bug 1 — Vitals disappear after transcription + SOAP generation.**
+
+Root cause: pipeline endpoints returned Session objects with `include` blocks that were narrower than `GET /:id`. `upload-audio` used `{ patient, physician }`; `transcribe` re-fetched with `{ patient, physician, transcript, soapNote: { include: { approvedBy } }, auditEvents }`; `generate-soap` returned the Session from inside its `$transaction` with the same narrow include. None of them included `vitals`. The frontend calls `setSession(updated)` on each response, which wholesale-replaced the in-memory session and wiped the `vitals` field the user had entered before recording. The vitals were never lost in the database — only from local state until the next `GET /:id`.
+
+Fix: introduced a single `SESSION_FULL_INCLUDE` constant at the top of `sessions.ts` mirroring the shape of `GET /:id` (patient, physician, transcript, soapNote with approvedBy + assignedReviewer, vitals, auditEvents ASC). Every endpoint that returns a Session now uses it:
+- `GET /:id` — swapped inline include for the constant.
+- `POST /:id/upload-audio` — restructured: the transaction now only writes (session update + audit event) and the response re-fetches via `findUnique` with `SESSION_FULL_INCLUDE` afterward. Dropped the now-unused per-mutation include on `tx.session.update`.
+- `POST /:id/transcribe` — already re-fetched after the two transactions; just swapped its inline include for the constant.
+- `POST /:id/generate-soap` — same restructure as upload-audio: removed `include` from the `tx.session.update` call (along with `return s`), re-fetches after the transaction. Previously the in-transaction return also missed the `SOAP_DRAFT_CREATED` audit event it had just written, because the include ran before `tx.auditEvent.create`. Re-fetching after the transaction closes fixes both vitals *and* audit-trail freshness in one shot.
+- `POST /:id/archive` + `POST /:id/unarchive` — same restructure for consistency.
+
+This also means the frontend audit panel now refreshes automatically from the pipeline response (no second `/audit-events` fetch needed for those specific transitions), though the existing `fetchAuditEvents()` refresh stays in place for defense in depth.
+
+**Bug 2 — No way to replay audio on a completed visit.**
+
+Root cause: `AudioRecorder` only renders `<audio>` while in its own in-session `uploadStatus === "success"` branch, via a blob URL created from the just-recorded blob. On page reload, or for a non-owner, or after the visit is COMPLETED, there's no audio element at all. Separately, `Session.audioFileUrl` is a local filesystem path (`./uploads/<id>.webm`) the browser can't fetch directly, and no HTTP endpoint exposed it.
+
+Fix spans backend, api wrapper, a new component, and the page:
+- **Backend — `GET /api/sessions/:id/audio`**: practice-wide read (any authenticated physician), 404 on unknown session or null/missing `audioFileUrl`. Detects content type from extension (`.mp3` → audio/mpeg, `.wav` → audio/wav, `.m4a` → audio/mp4, default audio/webm). Sets `Accept-Ranges: bytes` and calls `res.sendFile(path.resolve(audioFileUrl))`. Uses `fs.existsSync` to fail cleanly if the DB row points at a file that was cleaned up on disk. No ownership check — mirrors the practice-wide read semantics of `GET /:id`.
+- **`packages/web/src/lib/api.ts`**: new `getBlob(path)` helper that attaches the Clerk Bearer token and returns a `Blob` (can't use `get<T>` because it hard-codes `Content-Type: application/json` and calls `res.json()`). Exposed on the `useApi()` return value alongside `get`/`post`/`put`/`del`/`uploadFile`.
+- **New `packages/web/src/components/audio/AudioPlayback.tsx`**: `useEffect` fetches the blob via `getBlob(/sessions/:id/audio)`, wraps it in `URL.createObjectURL`, feeds the URL to an `<audio controls>`. Loading/error states (`audio-playback-loading`, `audio-playback-error`, `audio-playback`). Uses a `useRef` to track the blob URL and revoke it on cleanup / refetch. Blob-URL route is necessary because Clerk tokens can't ride along an `<audio src>` query string, and we need auth on the endpoint.
+- **`ActiveVisitPage.tsx`**: rewrote the Audio section conditional. Priority order: no id → "No session ID" fallback; `session.audioFileUrl` present → `<AudioPlayback sessionId={id} />` (covers both completed visits *and* non-owner views of a recorded visit); else owner with no audio → `<AudioRecorder>`; else (non-owner, no audio) → new `audio-empty-state` placeholder ("No audio recorded for this visit."). Dropped the old `readOnly` branch of `AudioRecorder` entirely — it's no longer reachable.
+- **`AudioRecorder.tsx`**: removed the now-dead `readOnly` prop and the `audio-readonly-placeholder` element.
+- **`ownership.test.tsx`**: the non-owner "hides Start Recording and shows placeholder" test now asserts `audio-empty-state` instead of `audio-readonly-placeholder`, matching the new conditional. (The fixture session in that test has `audioFileUrl: null`, so the empty-state branch is the correct path.)
+
+**Verification:**
+- `npx tsc --noEmit` — both `packages/server` and `packages/web` clean.
+
+---
+
+## 2026-04-15
 ### Entry #33 — Feature: Review Assignment Dashboard + Audit Timeline
 
 Closes out `claude/assign-review-spec.md`. With Entries #30 (backend), #31 (owner workflow UI), and #32 (reviewer experience + feedback banner) in place, this entry ships the dashboard "Assigned to You for Review" section, the "Awaiting Your Sign-off" stat, and the audit timeline treatment for `REVIEW_ASSIGNED` + `REVIEW_RETURNED`. End-to-end the feature is now demoable: Physician A → Assign for Review → Physician B's dashboard shows the pending review → B opens the visit (reviewer banner + reviewer actions) → Return to Draft with feedback → A sees the feedback banner → re-assign or self-approve → audit trail tells the whole story.

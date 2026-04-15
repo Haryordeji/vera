@@ -20,6 +20,27 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+/**
+ * Canonical `include` block for every endpoint that returns a full Session.
+ * Using this everywhere ensures mutation responses never drop relations
+ * (vitals, soapNote with reviewer, audit trail) that the frontend relies on.
+ */
+const SESSION_FULL_INCLUDE = {
+  patient: true,
+  physician: {
+    select: { id: true, fullName: true, credentials: true },
+  },
+  transcript: true,
+  soapNote: {
+    include: {
+      approvedBy: true,
+      assignedReviewer: { select: { id: true, fullName: true } },
+    },
+  },
+  vitals: true,
+  auditEvents: { orderBy: { createdAt: "asc" as const } },
+} as const;
+
 const router = Router();
 
 /** POST /api/sessions — create a session for the authenticated physician */
@@ -222,21 +243,7 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
 
     const session = await prisma.session.findUnique({
       where: { id: req.params.id },
-      include: {
-        patient: true,
-        physician: {
-          select: { id: true, fullName: true, credentials: true },
-        },
-        transcript: true,
-        soapNote: {
-          include: {
-            approvedBy: true,
-            assignedReviewer: { select: { id: true, fullName: true } },
-          },
-        },
-        vitals: true,
-        auditEvents: { orderBy: { createdAt: "asc" } },
-      },
+      include: SESSION_FULL_INCLUDE,
     });
 
     if (!session) {
@@ -282,14 +289,13 @@ router.post(
 
       const audioFileUrl = req.file.path;
 
-      const updated = await prisma.$transaction(async (tx) => {
-        const s = await tx.session.update({
+      await prisma.$transaction(async (tx) => {
+        await tx.session.update({
           where: { id: ownership.session.id },
           data: {
             audioFileUrl,
             status: SessionStatus.TRANSCRIBING,
           },
-          include: { patient: true, physician: true },
         });
 
         await tx.auditEvent.create({
@@ -300,8 +306,11 @@ router.post(
             author: physician.fullName,
           },
         });
+      });
 
-        return s;
+      const updated = await prisma.session.findUnique({
+        where: { id: ownership.session.id },
+        include: SESSION_FULL_INCLUDE,
       });
 
       res.json(updated);
@@ -423,13 +432,7 @@ router.post("/:id/transcribe", async (req: Request, res: Response, next: NextFun
     // Return fully populated session
     const updated = await prisma.session.findUnique({
       where: { id: session.id },
-      include: {
-        patient: true,
-        physician: true,
-        transcript: true,
-        soapNote: { include: { approvedBy: true } },
-        auditEvents: { orderBy: { createdAt: "asc" } },
-      },
+      include: SESSION_FULL_INCLUDE,
     });
 
     res.json(updated);
@@ -481,7 +484,7 @@ router.post("/:id/generate-soap", async (req: Request, res: Response, next: Next
     const soapService = new SoapGenerationService();
     const soap = await soapService.generate(session.transcript.plainText);
 
-    const updated = await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       await tx.soapNote.upsert({
         where: { sessionId: session.id },
         create: {
@@ -499,16 +502,9 @@ router.post("/:id/generate-soap", async (req: Request, res: Response, next: Next
         },
       });
 
-      const s = await tx.session.update({
+      await tx.session.update({
         where: { id: session.id },
         data: { status: SessionStatus.IN_REVIEW },
-        include: {
-          patient: true,
-          physician: true,
-          transcript: true,
-          soapNote: { include: { approvedBy: true } },
-          auditEvents: { orderBy: { createdAt: "asc" } },
-        },
       });
 
       await tx.auditEvent.create({
@@ -519,8 +515,11 @@ router.post("/:id/generate-soap", async (req: Request, res: Response, next: Next
           author: "AI Engine",
         },
       });
+    });
 
-      return s;
+    const updated = await prisma.session.findUnique({
+      where: { id: session.id },
+      include: SESSION_FULL_INCLUDE,
     });
 
     res.json(updated);
@@ -915,11 +914,10 @@ router.post("/:id/archive", async (req: Request, res: Response, next: NextFuncti
       return;
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const s = await tx.session.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.session.update({
         where: { id: ownership.session.id },
         data: { archivedAt: new Date() },
-        include: { patient: true, physician: true },
       });
 
       await tx.auditEvent.create({
@@ -930,8 +928,11 @@ router.post("/:id/archive", async (req: Request, res: Response, next: NextFuncti
           author: physician.fullName,
         },
       });
+    });
 
-      return s;
+    const updated = await prisma.session.findUnique({
+      where: { id: ownership.session.id },
+      include: SESSION_FULL_INCLUDE,
     });
 
     res.json(updated);
@@ -961,11 +962,10 @@ router.post("/:id/unarchive", async (req: Request, res: Response, next: NextFunc
       return;
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const s = await tx.session.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.session.update({
         where: { id: ownership.session.id },
         data: { archivedAt: null },
-        include: { patient: true, physician: true },
       });
 
       await tx.auditEvent.create({
@@ -976,8 +976,11 @@ router.post("/:id/unarchive", async (req: Request, res: Response, next: NextFunc
           author: physician.fullName,
         },
       });
+    });
 
-      return s;
+    const updated = await prisma.session.findUnique({
+      where: { id: ownership.session.id },
+      include: SESSION_FULL_INCLUDE,
     });
 
     res.json(updated);
@@ -1016,6 +1019,59 @@ router.get("/:id/audit-events", async (req: Request, res: Response, next: NextFu
     });
 
     res.json(events);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** GET /api/sessions/:id/audio — stream the stored audio file (practice-wide read) */
+router.get("/:id/audio", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+
+    const physician = await getPhysician(userId);
+    if (!physician) {
+      res.status(400).json({ error: "Physician profile not found." });
+      return;
+    }
+
+    const session = await prisma.session.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, audioFileUrl: true },
+    });
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    if (!session.audioFileUrl) {
+      res.status(404).json({ error: "No audio file recorded for this session." });
+      return;
+    }
+
+    const filePath = path.resolve(session.audioFileUrl);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "Audio file missing on disk." });
+      return;
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType =
+      ext === ".mp3"
+        ? "audio/mpeg"
+        : ext === ".wav"
+          ? "audio/wav"
+          : ext === ".m4a"
+            ? "audio/mp4"
+            : "audio/webm";
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Accept-Ranges", "bytes");
+    res.sendFile(filePath);
   } catch (err) {
     next(err);
   }

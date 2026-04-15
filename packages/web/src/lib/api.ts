@@ -72,6 +72,22 @@ export function useApi() {
     [getToken]
   );
 
+  /** Fetch a binary resource (e.g. audio) with the Bearer token and return a Blob. */
+  const getBlob = useCallback(
+    async (path: string): Promise<Blob> => {
+      const token = await getToken();
+      const res = await fetch(`${BASE}${path}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`API ${res.status}: ${body}`);
+      }
+      return res.blob();
+    },
+    [getToken]
+  );
+
   /** Upload a file as multipart/form-data (no Content-Type header — browser sets it with boundary). */
   const uploadFile = useCallback(
     async <T>(path: string, formData: FormData): Promise<T> => {
@@ -90,5 +106,5 @@ export function useApi() {
     [getToken]
   );
 
-  return { get, post, put, del, uploadFile };
+  return { get, post, put, del, getBlob, uploadFile };
 }

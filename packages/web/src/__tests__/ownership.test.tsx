@@ -210,7 +210,7 @@ describe("ActiveVisitPage — non-owner view", () => {
     expect(banner).toHaveTextContent(/read-only/i);
   });
 
-  it("hides the Start Recording button and shows a read-only placeholder", async () => {
+  it("hides the Start Recording button and shows the empty-state placeholder when no audio is present", async () => {
     const session = makeSession(PHYSICIAN_LEE);
     configureMockGet(PHYSICIAN_SMITH, session);
 
@@ -220,9 +220,7 @@ describe("ActiveVisitPage — non-owner view", () => {
       expect(screen.getByTestId("ownership-banner")).toBeInTheDocument()
     );
     expect(screen.queryByTestId("start-recording-btn")).not.toBeInTheDocument();
-    expect(
-      screen.getByTestId("audio-readonly-placeholder")
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("audio-empty-state")).toBeInTheDocument();
   });
 
   it("shows VitalsDisplay without the edit button", async () => {
