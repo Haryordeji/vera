@@ -34,7 +34,7 @@ All phases complete. The app is demo-ready.
 - ✅ API: allergy/medication CRUD nested under patients; vitals POST/PUT with 409 on duplicate + `VITALS_RECORDED` audit event; patient create/update accept new fields; list returns `_count`; detail returns nested allergies/medications/sessions; session detail now includes vitals.
 - ✅ Frontend patient list page: `/patients` route, sidebar nav entry, `PatientCard`, debounced search, inline create form with all profile fields, `usePatient` hook wrapping the API surface.
 - ✅ Frontend patient detail page: `/patients/:id` two-column layout (scrollable visit history left, sticky profile right). `PatientProfile` (inline edit), `AllergyList` (severity-colored chips + add/delete), `MedicationList` (add/edit/delete), `PatientVisitHistory` (Start New Visit button + chronological session rows with physician/status/SOAP pill).
-- ⏳ Vitals UI on Active Visit Page — not yet implemented.
+- ✅ Vitals UI on Active Visit Page: `VitalsForm` + `VitalsDisplay` components in a new Vitals section between the patient header and the audio recorder. Form shown on first visit; display with abnormal-value highlighting (yellow=borderline, red=critical for HR/temp/SpO2/BP systolic) once saved. Edit toggles back to the form and PUTs.
 
 ## Commands
 - `npm run dev` — starts both frontend and backend

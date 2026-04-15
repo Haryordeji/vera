@@ -3,6 +3,33 @@
 ---
 
 ## 2026-04-14
+### Entry #16 — Enhanced Patient Management: Vitals on Active Visit Page
+
+Phase 5 of the feature — vitals entry/display on the Active Visit page. New `VitalsForm` and `VitalsDisplay` components plus wiring into `ActiveVisitPage`. 13 new tests pass.
+
+**New components (`packages/web/src/components/vitals/`):**
+- `VitalsForm.tsx` — 7 labeled number inputs in a responsive 1/2/3-column grid: weight (kg, step 0.1), BP systolic (mmHg, 60–250), BP diastolic (mmHg, 40–150), heart rate (bpm, 30–250), temperature (°C, step 0.1, 34–42), respiratory rate (/min, 8–60), SpO₂ (%, step 0.1, 70–100). Each input has an inline unit label. Empty strings are sent as `null`. On submit, POSTs to `/api/sessions/:id/vitals` on new entry or PUTs when `initial` vitals are provided. Loading spinner + toast on save. Optional Cancel button when editing existing vitals.
+- `VitalsDisplay.tsx` — read-only grid showing each vital with its value and unit. Abnormal highlighting via `data-severity="normal"|"borderline"|"critical"` plus yellow/red background tints. Thresholds:
+  - HR: borderline >100 or <60, critical >120 or <50
+  - Temp: borderline >38°C, critical >39°C
+  - SpO₂: borderline <95%, critical <90%
+  - BP systolic: borderline >140 or <90, critical >180 or <80
+  - Null values render as "--" with the unit hidden. Pencil "Edit" button switches the parent back to `VitalsForm`.
+
+**Page wiring (`packages/web/src/pages/ActiveVisitPage.tsx`):**
+- Imports `VitalsForm`, `VitalsDisplay`, and the `Activity` icon. New `Vitals` type import.
+- New `editingVitals` boolean state drives the form/display toggle.
+- `handleVitalsSaved(v)` merges vitals into `session`, exits edit mode, and re-fetches audit events (so the `VITALS_RECORDED` event lands in the sidebar timeline).
+- A new `<section data-testid="vitals-section">` is rendered directly between the visit header and the Audio Recording panel: shows `VitalsDisplay` when vitals exist and we're not editing, otherwise `VitalsForm`. Cancel is only offered when editing existing vitals.
+
+**Tests (`packages/web/src/__tests__/vitals.test.tsx` — 13 new):**
+- VitalsForm: all 7 inputs render with the correct type/step/min/max; unit labels render; empty submit sends POST with nulls; pre-filled submit sends PUT (verifies `initial` -> edit mode path); `onSaved` is invoked with the API response.
+- VitalsDisplay: values render with units; nulls render as "--" with units hidden; HR 110→borderline / 130→critical; Temp 38.5→borderline / 39.5→critical; SpO₂ 93→borderline / 88→critical; BP systolic 150→borderline / 190→critical; normal values render with `data-severity="normal"`; Edit button fires `onEdit`.
+
+**Suite status:** `vitals.test.tsx` 13/13 ✅ (run in isolation). Full suite rerun skipped at user request.
+
+---
+
 ### Entry #15 — Enhanced Patient Management: Patient Detail Page (Frontend)
 
 Phase 4 of the feature — the clinical home base for each patient. Two-column layout at `/patients/:id`: scrollable visit history on the left, sticky profile on the right with allergies and medications. All CRUD wired to existing backend endpoints; 20 new tests pass.

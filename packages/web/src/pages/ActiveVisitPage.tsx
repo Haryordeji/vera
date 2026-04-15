@@ -9,10 +9,12 @@ import { SoapNoteEditor } from "@/components/soap/SoapNoteEditor";
 import type { SoapContent } from "@/components/soap/SoapNoteEditor";
 import { SoapWorkflowActions } from "@/components/soap/SoapWorkflowActions";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
+import { VitalsForm } from "@/components/vitals/VitalsForm";
+import { VitalsDisplay } from "@/components/vitals/VitalsDisplay";
 import { useToast } from "@/components/ui/Toast";
 import { useApi } from "@/lib/api";
-import type { Session, AuditEvent, SoapNote } from "@/lib/types";
-import { CheckCircle, FileText, ClipboardList, Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import type { Session, AuditEvent, SoapNote, Vitals } from "@/lib/types";
+import { CheckCircle, FileText, ClipboardList, Loader2, AlertCircle, RefreshCw, Activity } from "lucide-react";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -39,6 +41,8 @@ export default function ActiveVisitPage() {
   const [soapError, setSoapError] = useState<string | null>(null);
   // Local edits to SOAP content (before saving)
   const [soapEdits, setSoapEdits] = useState<SoapContent | null>(null);
+  // Vitals: show the form initially (or when user clicks Edit), otherwise display
+  const [editingVitals, setEditingVitals] = useState(false);
   // Track last uploaded session for retry
   const [lastUploadedSession, setLastUploadedSession] = useState<Session | null>(null);
 
@@ -116,6 +120,12 @@ export default function ActiveVisitPage() {
       });
     }
   }, [session?.soapNote?.id]);
+
+  const handleVitalsSaved = useCallback((v: Vitals) => {
+    setSession((prev) => (prev ? { ...prev, vitals: v } : prev));
+    setEditingVitals(false);
+    fetchAuditEvents();
+  }, [fetchAuditEvents]);
 
   const handleSoapChange = useCallback((field: keyof SoapContent, value: string) => {
     setSoapEdits((prev) => (prev ? { ...prev, [field]: value } : null));
@@ -204,6 +214,34 @@ export default function ActiveVisitPage() {
           </div>
           {session?.status && <StatusBadge status={session.status} />}
         </div>
+
+        {/* Vitals panel */}
+        {id && (
+          <section
+            data-testid="vitals-section"
+            className="bg-white rounded-lg border border-slate-200 p-5"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Activity className="w-4 h-4 text-slate-500" />
+              <h3 className="text-sm font-semibold text-slate-700">Vitals</h3>
+            </div>
+            {session?.vitals && !editingVitals ? (
+              <VitalsDisplay
+                vitals={session.vitals}
+                onEdit={() => setEditingVitals(true)}
+              />
+            ) : (
+              <VitalsForm
+                sessionId={id}
+                initial={session?.vitals ?? null}
+                onSaved={handleVitalsSaved}
+                onCancel={
+                  session?.vitals ? () => setEditingVitals(false) : undefined
+                }
+              />
+            )}
+          </section>
+        )}
 
         {/* Audio recorder panel */}
         <section className="bg-white rounded-lg border border-slate-200 p-5">
