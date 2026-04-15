@@ -3,6 +3,59 @@
 ---
 
 ## 2026-04-15
+### Entry #31 — Feature: Review Assignment Workflow (frontend)
+
+Implements the frontend half of `claude/assign-review-spec.md`. Owners can now pick a colleague from a dialog to send a DRAFT note for review; the assigned reviewer gets Approve & Sign and Return to Draft affordances on the Active Visit page; and when a note comes back to DRAFT with feedback, the owner sees the reviewer's note in an amber banner above the SOAP panel.
+
+**Types (`packages/web/src/lib/types.ts`):**
+- `SoapNote` extended with `assignedReviewerId?`, `assignedReviewer?: { id, fullName }`, `reviewFeedback?`.
+
+**New component (`packages/web/src/components/soap/AssignReviewDialog.tsx`):**
+- Modal that opens from the owner's "Assign for Review" button. On open, fetches `/api/physicians`, filters out `currentPhysicianId`, and renders a `<select>` of colleagues.
+- Submit calls `POST /sessions/:id/soap-note/assign-review` with `{ reviewerId }`, shows "Assigned to Dr. X for review", and forwards the updated `SoapNote` + reviewer name to the parent via `onAssigned`.
+- 403s surface the standard "You can only modify sessions you created." toast.
+- Testids: `assign-review-dialog`, `assign-review-loading`, `assign-review-empty`, `assign-review-select`, `assign-review-option-${id}`, `assign-review-cancel`, `assign-review-submit`. Reopening resets the selected id.
+
+**Rewritten `SoapWorkflowActions` (`packages/web/src/components/soap/SoapWorkflowActions.tsx`):**
+- New prop surface: `isOwner`, `isAssignedReviewer`, `assignedReviewerName`, `returning`, `onAssignForReview`, `onReturnToDraft(feedback)`.
+- Owner + DRAFT: `Save Draft` + `Sign & Finalize` (ConfirmDialog) + `Assign for Review`.
+- Owner + PENDING_REVIEW: `Save Draft` only + blue `pending-review-info` banner naming the reviewer ("Assigned to Dr. X for review. You can still edit the note while you wait.").
+- Owner + APPROVED: nothing.
+- Reviewer + PENDING_REVIEW: `Approve & Sign` (ConfirmDialog — "This will finalize the note. This action is irreversible.") + `Return to Draft` toggle that reveals an inline panel with a textarea ("Optional: explain what needs to be revised…"), Cancel, and Submit. Submit forwards the trimmed feedback through `onReturnToDraft`.
+- Reviewer outside PENDING_REVIEW, or a physician who is neither owner nor assigned reviewer: nothing rendered.
+
+**`ActiveVisitPage` wiring (`packages/web/src/pages/ActiveVisitPage.tsx`):**
+- New state: `assignReviewOpen`, `returningToDraft`.
+- `handleAssigned(updated)` — closes the dialog, patches `session.soapNote`, refetches audit events.
+- `handleReturnToDraft(feedback)` — POSTs to `/sessions/:id/soap-note/return-to-draft`, shows "Note returned to {ownerName} for revision", updates local session, handles 403 with the standard forbidden toast.
+- Derivations: `isAssignedReviewer` = `currentPhysician.id === session.soapNote.assignedReviewer.id`; `showOwnershipBanner = knownNonOwner && !isAssignedReviewer` so assigned reviewers never see the read-only banner; `reviewFeedback` is only surfaced for DRAFT notes (feedback on other statuses is historical).
+- New amber `review-feedback-banner` above the SOAP panel when the owner views a DRAFT note carrying `reviewFeedback` — uses `MessageSquareWarning` from lucide-react, names the reviewer, and prints the feedback text.
+- `SoapWorkflowActions` is now rendered whenever the current physician is owner OR assigned reviewer. `SoapNoteEditor` stays `readOnly={isApproved || !isOwner}` — reviewers approve/return, they don't edit the SOAP content.
+
+**Tests (`packages/web/src/__tests__/soapWorkflow.test.tsx` rewritten):**
+- Hoisted `vi.mock` pattern for `@/lib/api` (`mockGet`, `mockPost`) and `@clerk/clerk-react`. New `renderWithToast` helper wraps the tree in `<ToastProvider>` so dialog/toast interactions run end-to-end.
+- Owner + DRAFT: all three buttons render; Sign & Finalize opens confirm + calls `onApprove`; Assign for Review click fires `onAssignForReview`.
+- Owner + PENDING_REVIEW: only Save Draft + `pending-review-info` with the reviewer's name.
+- APPROVED: `SoapWorkflowActions` renders nothing.
+- Reviewer + PENDING_REVIEW: Approve & Sign + Return to Draft; Approve confirm fires `onApprove`; Return opens the panel, Submit forwards typed feedback through `onReturnToDraft`; empty-string case also forwards.
+- Reviewer + DRAFT: nothing rendered.
+- Uninvolved physician (`it.each` across DRAFT / PENDING_REVIEW / APPROVED): nothing rendered.
+- `AssignReviewDialog`: excludes current user from the select, POST flow calls `onAssigned` with updated note + reviewer name, closed state doesn't fetch physicians.
+- Existing `SoapNoteEditor readOnly` + `ConfirmDialog` tests retained.
+
+**Verification:** `cd packages/web && npx tsc --noEmit` → clean. Vitest run deferred per session convention (user manually verifies).
+
+**Key files:**
+- `packages/web/src/lib/types.ts`
+- `packages/web/src/components/soap/AssignReviewDialog.tsx` (new)
+- `packages/web/src/components/soap/SoapWorkflowActions.tsx`
+- `packages/web/src/pages/ActiveVisitPage.tsx`
+- `packages/web/src/__tests__/soapWorkflow.test.tsx`
+- `CLAUDE.md`
+
+---
+
+## 2026-04-15
 ### Entry #30 — Feature: Review Assignment Workflow (backend)
 
 Implements the backend half of `claude/assign-review-spec.md` — physician-to-physician review assignment for SOAP notes. The owning physician can still self-approve from DRAFT, but can also now assign another physician to review the note. The assigned reviewer either approves & signs, or returns it to draft with feedback. The full frontend UI (AssignReviewDialog, ReviewerActions, ReviewFeedbackBanner, dashboard "Assigned to You for Review" section) is deferred to a follow-up session — a minimal patch in `ActiveVisitPage` removes the now-broken `/submit-review` call so nothing 404s in the interim.

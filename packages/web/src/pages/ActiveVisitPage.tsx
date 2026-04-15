@@ -10,6 +10,7 @@ import type { Utterance } from "@/components/transcript/TranscriptViewer";
 import { SoapNoteEditor } from "@/components/soap/SoapNoteEditor";
 import type { SoapContent } from "@/components/soap/SoapNoteEditor";
 import { SoapWorkflowActions } from "@/components/soap/SoapWorkflowActions";
+import { AssignReviewDialog } from "@/components/soap/AssignReviewDialog";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import { VitalsForm } from "@/components/vitals/VitalsForm";
 import { VitalsDisplay } from "@/components/vitals/VitalsDisplay";
@@ -23,7 +24,7 @@ const FORBIDDEN_TOAST = "You can only modify sessions you created.";
 function isForbiddenError(err: unknown): boolean {
   return err instanceof Error && err.message.startsWith("API 403");
 }
-import { CheckCircle, FileText, ClipboardList, Loader2, AlertCircle, RefreshCw, Activity, Archive, RotateCcw } from "lucide-react";
+import { CheckCircle, FileText, ClipboardList, Loader2, AlertCircle, RefreshCw, Activity, Archive, RotateCcw, MessageSquareWarning } from "lucide-react";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -44,6 +45,8 @@ export default function ActiveVisitPage() {
 
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [assignReviewOpen, setAssignReviewOpen] = useState(false);
+  const [returningToDraft, setReturningToDraft] = useState(false);
 
   const [session, setSession] = useState<Session | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -167,14 +170,6 @@ export default function ActiveVisitPage() {
     }
   }, [id, soapEdits, put, showToast, fetchAuditEvents]);
 
-  const handleRequestReview = useCallback(async () => {
-    // The old DRAFT → PENDING_REVIEW self-submit flow has been replaced by
-    // reviewer assignment (see claude/assign-review-spec.md). The full
-    // AssignReviewDialog is pending frontend work; in the meantime this
-    // button is a no-op with an inline notice so nothing 404s.
-    showToast("Reviewer assignment UI coming soon — use Sign & Finalize for now", "error");
-  }, [showToast]);
-
   const handleApprove = useCallback(async () => {
     if (!id) return;
     try {
@@ -191,6 +186,44 @@ export default function ActiveVisitPage() {
       );
     }
   }, [id, post, showToast, fetchAuditEvents]);
+
+  const handleAssigned = useCallback(
+    (updated: SoapNote) => {
+      setAssignReviewOpen(false);
+      setSession((prev) => (prev ? { ...prev, soapNote: updated } : prev));
+      fetchAuditEvents();
+    },
+    [fetchAuditEvents]
+  );
+
+  const handleReturnToDraft = useCallback(
+    async (feedback: string) => {
+      if (!id || returningToDraft) return;
+      setReturningToDraft(true);
+      try {
+        const updated = await post<SoapNote>(
+          `/sessions/${id}/soap-note/return-to-draft`,
+          { feedback }
+        );
+        setSession((prev) => (prev ? { ...prev, soapNote: updated } : prev));
+        const ownerName = session?.physician?.fullName;
+        showToast(
+          ownerName
+            ? `Note returned to ${ownerName} for revision`
+            : "Note returned to draft"
+        );
+        fetchAuditEvents();
+      } catch (err) {
+        showToast(
+          isForbiddenError(err) ? FORBIDDEN_TOAST : "Failed to return note",
+          "error"
+        );
+      } finally {
+        setReturningToDraft(false);
+      }
+    },
+    [id, returningToDraft, post, session?.physician?.fullName, showToast, fetchAuditEvents]
+  );
 
   const handleConfirmArchive = useCallback(async () => {
     if (!id || archiving) return;
@@ -248,7 +281,17 @@ export default function ActiveVisitPage() {
   const knownNonOwner =
     !!currentPhysician && !!session && currentPhysician.id !== session.physicianId;
   const isOwner = !knownNonOwner;
-  const showOwnershipBanner = knownNonOwner;
+  // Assigned reviewer is resolved deterministically from the SOAP note relation.
+  const isAssignedReviewer =
+    !!currentPhysician &&
+    !!session?.soapNote?.assignedReviewer &&
+    currentPhysician.id === session.soapNote.assignedReviewer.id;
+  const showOwnershipBanner = knownNonOwner && !isAssignedReviewer;
+  const assignedReviewerName = session?.soapNote?.assignedReviewer?.fullName ?? null;
+  const reviewFeedback =
+    session?.soapNote?.workflowStatus === "DRAFT"
+      ? session?.soapNote?.reviewFeedback ?? null
+      : null;
 
   const rightPanel = (
     <AuditTimeline events={auditEvents} />
@@ -427,6 +470,26 @@ export default function ActiveVisitPage() {
           )}
         </section>
 
+        {/* Review feedback banner — shown when a reviewer returned the note */}
+        {isOwner && reviewFeedback && (
+          <div
+            data-testid="review-feedback-banner"
+            className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4"
+          >
+            <MessageSquareWarning className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900">
+                {assignedReviewerName
+                  ? `${assignedReviewerName} returned this note for revision`
+                  : "The assigned reviewer returned this note for revision"}
+              </p>
+              <p className="mt-1 text-sm text-amber-800 whitespace-pre-wrap">
+                {reviewFeedback}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* SOAP note panel */}
         <section className="bg-white rounded-lg border border-slate-200 p-5">
           <div className="flex items-center justify-between mb-4">
@@ -495,13 +558,28 @@ export default function ActiveVisitPage() {
         </section>
 
         {/* Workflow action buttons */}
-        {isOwner && session?.soapNote && (
+        {session?.soapNote && (isOwner || isAssignedReviewer) && (
           <SoapWorkflowActions
             workflowStatus={session.soapNote.workflowStatus}
+            isOwner={isOwner}
+            isAssignedReviewer={isAssignedReviewer}
+            assignedReviewerName={assignedReviewerName}
             saving={savingDraft}
+            returning={returningToDraft}
             onSaveDraft={handleSaveDraft}
-            onRequestReview={handleRequestReview}
             onApprove={handleApprove}
+            onAssignForReview={() => setAssignReviewOpen(true)}
+            onReturnToDraft={handleReturnToDraft}
+          />
+        )}
+
+        {id && (
+          <AssignReviewDialog
+            open={assignReviewOpen}
+            sessionId={id}
+            currentPhysicianId={currentPhysician?.id ?? null}
+            onCancel={() => setAssignReviewOpen(false)}
+            onAssigned={handleAssigned}
           />
         )}
       </div>

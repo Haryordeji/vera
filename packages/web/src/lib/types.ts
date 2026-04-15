@@ -100,6 +100,9 @@ export interface SoapNote {
   approvedAt: string | null;
   approvedById: string | null;
   approvedBy?: Physician | null;
+  assignedReviewerId?: string | null;
+  assignedReviewer?: { id: string; fullName: string } | null;
+  reviewFeedback?: string | null;
   createdAt: string;
   updatedAt: string;
 }
