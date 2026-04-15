@@ -39,6 +39,31 @@ let archiveFlowSessionId: string; // owner session used to exercise the full arc
 beforeAll(async () => {
   await prisma.$connect();
 
+  // Wipe leftovers from any prior run (including crashed/interrupted ones).
+  // Order matters: audit events → sessions → patients → physicians, because
+  // of FK constraints. Uses stable prefixes so it catches every historical run.
+  const stalePhysicians = await prisma.physician.findMany({
+    where: { clerkId: { startsWith: "archive_" } },
+    select: { id: true },
+  });
+  const stalePhysicianIds = stalePhysicians.map((p) => p.id);
+  if (stalePhysicianIds.length > 0) {
+    await prisma.auditEvent.deleteMany({
+      where: { session: { physicianId: { in: stalePhysicianIds } } },
+    });
+    await prisma.session.deleteMany({
+      where: { physicianId: { in: stalePhysicianIds } },
+    });
+  }
+  await prisma.patient.deleteMany({
+    where: { mrn: { startsWith: "archive_test_" } },
+  });
+  if (stalePhysicianIds.length > 0) {
+    await prisma.physician.deleteMany({
+      where: { id: { in: stalePhysicianIds } },
+    });
+  }
+
   const owner = await prisma.physician.create({
     data: {
       clerkId: OWNER_CLERK,

@@ -20,18 +20,36 @@ import { PrismaClient } from "../generated/prisma/client";
 
 const prisma = new PrismaClient();
 const AUTH = { "x-test-clerk-user-id": "patients_test_user" };
-const SEED = `pt_test_${Date.now()}`;
+const SEED_PREFIX = "pt_test_";
+const SEED = `${SEED_PREFIX}${Date.now()}`;
 
 let createdId: string;
 
 beforeAll(async () => {
   await prisma.$connect();
-  // Clean up any stale data from prior runs
-  await prisma.patient.deleteMany({ where: { mrn: { startsWith: SEED } } });
+  // Wipe leftovers from ANY prior run (including crashed/interrupted ones).
+  // The "can clear optional fields by sending null" test nulls out mrn, so
+  // prior-run "Alice Updated" rows have null mrn — match by fullName too.
+  // "Bob Minimal" is created with no mrn at all, same story.
+  await prisma.patient.deleteMany({
+    where: {
+      OR: [
+        { mrn: { startsWith: SEED_PREFIX } },
+        { fullName: { in: ["Alice Updated", "Bob Minimal"] } },
+      ],
+    },
+  });
 });
 
 afterAll(async () => {
-  await prisma.patient.deleteMany({ where: { mrn: { startsWith: SEED } } });
+  // The "can clear optional fields by sending null" test nulls out mrn on
+  // createdId, so the prefix filter alone would miss that row. Delete by id
+  // too. Also sweep the stable prefix to catch Bob Minimal + any older leaks.
+  if (createdId) {
+    await prisma.patient.deleteMany({ where: { id: createdId } });
+  }
+  await prisma.patient.deleteMany({ where: { mrn: { startsWith: SEED_PREFIX } } });
+  await prisma.patient.deleteMany({ where: { fullName: "Bob Minimal" } });
   await prisma.$disconnect();
 });
 

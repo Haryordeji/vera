@@ -3,6 +3,31 @@
 ---
 
 ## 2026-04-15
+### Entry #29 — Fix: patients integration tests leaking ghost rows into dev DB
+
+**Symptom:** "Alice Updated" (with `mrn = NULL`) was appearing in the dev database even after clean test runs.
+
+**Root cause:** `packages/server/src/__tests__/patients.test.ts` uses the single `DATABASE_URL` from `.env`, so integration tests write to the dev DB. The test suite ran this sequence:
+1. POST creates "Alice Test" with `mrn = pt_test_<timestamp>_alice` → row captured in `createdId`.
+2. PUT updates the row to "Alice Updated" with `mrn = pt_test_<timestamp>_alice_v2`.
+3. **`it("can clear optional fields by sending null")`** sends `{ mrn: null }` on the same `createdId`, nulling out the mrn.
+4. `afterAll` only ran `deleteMany({ where: { mrn: { startsWith: SEED } } })` — which in Postgres does **not** match NULL values. The row survived cleanup.
+
+So every successful run (not just crashes) dropped one "Alice Updated" ghost into the dev DB. Same pattern for "Bob Minimal" (created with no mrn at all). `archive.test.ts` had the related but milder bug that its `SEED = archive_test_${Date.now()}` cleanup was process-scoped, so interrupted runs left stale physicians/patients.
+
+**Quick patch (no separate test DB yet):**
+- `patients.test.ts`:
+  - Cleanup is now stable-prefix-based (`SEED_PREFIX = "pt_test_"`) instead of `Date.now()`-scoped, so new runs wipe leftovers from older runs automatically.
+  - `beforeAll` additionally deletes by `fullName IN ("Alice Updated", "Bob Minimal")` to catch prior-run ghosts whose mrn was nulled or never set.
+  - `afterAll` deletes by `createdId` first (handles the null-mrn case), then sweeps `SEED_PREFIX`, then sweeps `"Bob Minimal"` by name.
+- `archive.test.ts`: `beforeAll` now does a prefix-based sweep of `physician.clerkId` starting with `"archive_"` and `patient.mrn` starting with `"archive_test_"`. Deletes in FK-safe order: audit events → sessions → patients → physicians. Catches leftovers from any prior interrupted run regardless of that run's `Date.now()` SEED.
+- Deleted the existing "Alice Updated" ghost row from the dev DB (`DELETE FROM "Patient" WHERE "fullName" IN ('Alice Updated', 'Bob Minimal') OR mrn LIKE 'pt_test_%' OR mrn LIKE 'archive_test_%'`).
+
+**Future-proofing note:** the right long-term fix is a dedicated test database loaded via `.env.test` + `vitest.config.ts setupFiles`. Quick patch is in place; flagged for later.
+
+---
+
+## 2026-04-15
 ### Entry #28 — PatientCard: Remove allergy count
 
 Allergy/medication details live on the Patient Detail page; showing just a count on the list card added noise without helping triage. The card now shows name, MRN, DOB, and visit count only.
