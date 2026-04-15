@@ -28,6 +28,14 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
+**Past Visits redesign (practice-wide archive) — COMPLETE** (`claude/dashboard-visibility-feat.md` §2):
+- ✅ `PastVisitsPage` rewritten: fetches `/sessions?scope=all` and always displays visits from every physician. All filtering is server-driven — no more client-side filtering.
+- ✅ Debounced (300ms) search input sends `?search=` to the backend; matches patient fullName or MRN.
+- ✅ Filter bar: new `PhysicianFilter` component (fetches `/api/physicians` on mount) sends `?physician=<id>`, and a status `<select>` covering every `SessionStatus` sends `?status=`. All filters combine in a single request with search.
+- ✅ `VisitCard` already renders the physician name, so each card shows patient + date + `Dr. <Physician>` + status badge.
+- ✅ Empty state is "No visits found" (same copy whether the list is empty because of filters or because nothing has been recorded).
+- ✅ Tests (`pastVisits.test.tsx`, 8): scope=all fetch, multi-physician render, debounced search, physician filter, status filter, empty state, PhysicianFilter fetch + onChange. `routing.test.tsx` updated to the new empty-state copy.
+
 **Dashboard redesign (active work queue) — COMPLETE** (`claude/dashboard-visibility-feat.md` §1):
 - ✅ `DashboardPage` rewritten: fetches `/sessions?scope=mine`, filters out `COMPLETED`, renders three stat cards (In Progress = RECORDING+TRANSCRIBING+GENERATING_NOTE, Awaiting Review = IN_REVIEW, Completed This Week = COMPLETED in last 7 days), a prominent Start New Visit CTA, and a list of active sessions.
 - ✅ New `ActiveSessionCard` component shows patient name, date, status badge, and an action-needed description per status (recording/transcribing/generating/in-review).

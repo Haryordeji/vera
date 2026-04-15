@@ -3,6 +3,53 @@
 ---
 
 ## 2026-04-14
+### Entry #20 — Past Visits Redesign: Practice-Wide Archive
+
+Frontend slice of `claude/dashboard-visibility-feat.md` §2. Past Visits used to be a personal-scope list of the logged-in physician's visits with client-side search and a tiny status-pill filter. It's now the practice-wide archive — every visit from every physician — with server-driven filtering.
+
+**`PastVisitsPage.tsx` rewrite:**
+- Fetches `/sessions?scope=all` and rebuilds the query string whenever any filter changes (search, physician, status). No more `useMemo` client-side filter — the backend already supports all of this after Entry #18.
+- Search input debounces for 300ms before updating `debouncedSearch`, which is the actual dependency in the fetch `useEffect`. So typing doesn't thrash the API.
+- Filter bar sits below the search box:
+  - `PhysicianFilter` (new component, see below) → `?physician=<id>` when selected.
+  - Status `<select>` with all 6 options (`All Statuses` + every `SessionStatus` value) → `?status=<value>` when not `ALL`.
+- Each result row uses the existing `VisitCard`, which already displays `Dr. <Physician.fullName>` from Entry #17. Status badge + chevron remain.
+- Empty state consolidated to a single "No visits found" message with `data-testid="past-visits-empty"` (replaces the old "No visits yet" / "No matching visits" split). This is an intentional simplification — the page is never "empty because you haven't done anything" anymore; it's practice-wide.
+- Skeleton loader (`data-testid="past-visits-loading"`) renders while any fetch is in flight — not just the initial one — because filter changes should feel responsive.
+- Subtitle copy updated: "Practice-wide archive of all visits across physicians."
+
+**New component — `components/visit/PhysicianFilter.tsx`:**
+- Self-contained: fetches `/physicians` on mount via `useApi`, renders a native styled `<select>` with a `Users` icon. Options are `All Physicians` (value `""`) followed by every physician as `Dr. <fullName>`.
+- Controlled via `{ value: string | null; onChange: (id: string | null) => void }`. Emits `null` when the user picks `All Physicians`, which the page translates into "don't send `physician` query param at all."
+- Exports `PhysicianOption = { id, fullName }` since that's exactly the shape `/api/physicians` returns (no need to reuse the heavy `Physician` type from `types.ts`).
+- Exposes `data-testid="physician-filter"` and a descriptive `aria-label` for test queries and a11y.
+- The spec said "shadcn/ui Select" but the codebase doesn't have the shadcn Select primitive installed — everything else in `components/ui/` is hand-rolled Tailwind. Kept the native `<select>` styled to match the search input and existing form elements rather than introducing the shadcn Select dependency mid-feature. Can be swapped later without changing the component's public interface.
+
+**Tests — `pastVisits.test.tsx` (8 new):**
+- Shared `configureMockGet` helper routes `/physicians` and `/sessions?...` URLs to in-memory fixtures. The sessions handler honors `search`/`physician`/`status` query params, so the page's real URL-building is exercised end-to-end.
+- `PastVisitsPage`:
+  - Calls `/sessions?scope=all` on mount.
+  - Renders rows from multiple physicians, each with its `visit-card-physician` tag.
+  - Search input, after debounce, triggers a call containing `search=Garcia` and narrows the visible list.
+  - Physician dropdown triggers `physician=phys-lee` and narrows the list accordingly.
+  - Status dropdown triggers `status=IN_REVIEW` and narrows the list accordingly.
+  - Empty API response renders the `past-visits-empty` state with "No visits found".
+- `PhysicianFilter` (standalone):
+  - Renders `Dr. <fullName>` for each physician returned by the API + the default "All Physicians" option.
+  - `onChange` receives the selected id when a physician is picked and `null` when "All Physicians" is re-selected.
+- `routing.test.tsx` smoke test updated: `getByText("No visits yet")` → `getByText("No visits found")` to match the new empty-state copy.
+
+**Files touched:**
+- `packages/web/src/pages/PastVisitsPage.tsx` (rewrite)
+- `packages/web/src/components/visit/PhysicianFilter.tsx` (new)
+- `packages/web/src/__tests__/pastVisits.test.tsx` (new, 8 tests)
+- `packages/web/src/__tests__/routing.test.tsx` (empty-state copy update)
+- `CLAUDE.md`
+
+Web test suite run skipped per user instruction — will be verified manually.
+
+---
+
 ### Entry #19 — Dashboard Redesign: Active Work Queue
 
 Frontend slice of `claude/dashboard-visibility-feat.md` §1 — the dashboard is no longer a generic visit list. It's now focused on what the logged-in physician still needs to do.

@@ -89,7 +89,7 @@ describe("Page components render", () => {
   it("PastVisitsPage shows heading and empty state", async () => {
     await renderAt(<PastVisitsPage />);
     expect(screen.getByRole("heading", { level: 2, name: /past visits/i })).toBeInTheDocument();
-    expect(screen.getByText("No visits yet")).toBeInTheDocument();
+    expect(screen.getByText("No visits found")).toBeInTheDocument();
   });
 
   it("SettingsPage shows heading and profile section", async () => {
