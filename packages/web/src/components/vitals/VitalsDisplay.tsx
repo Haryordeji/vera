@@ -3,7 +3,7 @@ import type { Vitals } from "@/lib/types";
 
 interface Props {
   vitals: Vitals;
-  onEdit: () => void;
+  onEdit?: () => void;
 }
 
 type Severity = "normal" | "borderline" | "critical";
@@ -136,16 +136,18 @@ export function VitalsDisplay({ vitals, onEdit }: Props) {
           </div>
         ))}
       </div>
-      <div className="flex justify-end">
-        <button
-          onClick={onEdit}
-          data-testid="vitals-edit"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded hover:bg-slate-50"
-        >
-          <Pencil className="w-3 h-3" />
-          Edit
-        </button>
-      </div>
+      {onEdit && (
+        <div className="flex justify-end">
+          <button
+            onClick={onEdit}
+            data-testid="vitals-edit"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded hover:bg-slate-50"
+          >
+            <Pencil className="w-3 h-3" />
+            Edit
+          </button>
+        </div>
+      )}
     </div>
   );
 }

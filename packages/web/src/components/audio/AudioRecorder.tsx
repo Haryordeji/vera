@@ -9,9 +9,10 @@ type UploadStatus = "idle" | "uploading" | "success" | "error";
 interface Props {
   sessionId: string;
   onUploadComplete?: (session: Session) => void;
+  readOnly?: boolean;
 }
 
-export function AudioRecorder({ sessionId, onUploadComplete }: Props) {
+export function AudioRecorder({ sessionId, onUploadComplete, readOnly = false }: Props) {
   const { isRecording, duration, audioBlob, error, startRecording, stopRecording } =
     useAudioRecorder();
   const { uploadFile } = useApi();
@@ -55,9 +56,18 @@ export function AudioRecorder({ sessionId, onUploadComplete }: Props) {
 
   return (
     <div className="space-y-4">
+      {readOnly && uploadStatus === "idle" && (
+        <p
+          data-testid="audio-readonly-placeholder"
+          className="text-sm text-slate-500"
+        >
+          Recording controls are hidden in read-only mode.
+        </p>
+      )}
+
       {/* Recorder controls */}
       <div className="flex items-center gap-4">
-        {!isRecording && uploadStatus === "idle" && (
+        {!readOnly && !isRecording && uploadStatus === "idle" && (
           <button
             onClick={startRecording}
             data-testid="start-recording-btn"

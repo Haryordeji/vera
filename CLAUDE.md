@@ -28,6 +28,14 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
+**Read-only mode on Active Visit page (non-owner view) — COMPLETE** (`claude/dashboard-visibility-feat.md` §3):
+- ✅ New `GET /api/auth/me` endpoint + `useCurrentPhysician` hook resolve the logged-in physician's id for client-side ownership checks.
+- ✅ `ActiveVisitPage` derives `isOwner` optimistically (treats unresolved `/auth/me` as "owner" to avoid read-only flash for owners). When `knownNonOwner`, renders `OwnershipBanner` naming the owning physician and gates every write control.
+- ✅ `AudioRecorder` accepts `readOnly`; hides Start/Stop buttons and shows an "in read-only mode" placeholder. `VitalsDisplay.onEdit` is now optional — non-owners see values only, no edit button. `VitalsForm` is never rendered for non-owners. `SoapNoteEditor` receives `readOnly={isApproved || !isOwner}`. `SoapWorkflowActions` only renders for owners.
+- ✅ 403 responses from any write action surface a "You can only modify sessions you created." toast (helper: `isForbiddenError` in `ActiveVisitPage.tsx`).
+- ✅ Audit timeline and transcript stay fully visible for everyone.
+- ✅ Tests (`ownership.test.tsx`): owner view has no banner, shows vitals edit + workflow buttons; non-owner view renders the banner naming the owner, hides Start Recording + vitals edit + all SOAP workflow buttons, and still shows SOAP content read-only.
+
 **Past Visits redesign (practice-wide archive) — COMPLETE** (`claude/dashboard-visibility-feat.md` §2):
 - ✅ `PastVisitsPage` rewritten: fetches `/sessions?scope=all` and always displays visits from every physician. All filtering is server-driven — no more client-side filtering.
 - ✅ Debounced (300ms) search input sends `?search=` to the backend; matches patient fullName or MRN.

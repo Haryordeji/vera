@@ -3,6 +3,58 @@
 ---
 
 ## 2026-04-14
+### Entry #21 — Read-Only Mode on Active Visit Page (Non-Owner View)
+
+Wraps up `claude/dashboard-visibility-feat.md` §3. After Entry #18 opened cross-physician reads on the backend, the Active Visit page still assumed the viewer owned the session. Now a non-owner sees a banner and a fully read-only page, and any stray write request surfaces a friendly toast.
+
+**Plumbing — current-user resolution:**
+- New `GET /api/auth/me` in `routes/auth.ts` returns the `Physician` row for the authenticated Clerk user (404 if the physician record isn't synced yet).
+- New `useCurrentPhysician` hook fetches `/auth/me` once and returns `Physician | null`. Returns `null` while loading or on failure — the page treats `null` as "assume owner" to avoid a read-only flash for owners before the lookup resolves.
+
+**New component — `components/visit/OwnershipBanner.tsx`:**
+- Blue info banner with `role="status"`, `data-testid="ownership-banner"`, and an `Eye` icon. Copy: "This visit was conducted by Dr. <Name>. You are viewing in read-only mode." Only ever rendered when we *know* the viewer isn't the owner.
+
+**`ActiveVisitPage.tsx` rewiring:**
+- `knownNonOwner = !!currentPhysician && !!session && currentPhysician.id !== session.physicianId`. `isOwner = !knownNonOwner` (optimistic — owners don't flicker). Only the banner uses `knownNonOwner` directly.
+- Renders `<OwnershipBanner />` between the header and the vitals section.
+- Vitals section: when not owner, renders `VitalsDisplay` without `onEdit` (which is now optional — see below) if vitals exist, or a small "No vitals recorded." placeholder otherwise. `VitalsForm` is never instantiated for non-owners.
+- `AudioRecorder` receives `readOnly={!isOwner}`.
+- `SoapNoteEditor` now gets `readOnly={isApproved || !isOwner}` (was just `isApproved`).
+- `SoapWorkflowActions` is gated behind `isOwner && session?.soapNote`.
+- Transcript (`TranscriptViewer` is already read-only) and audit timeline are untouched — they stay fully visible for everyone, which matches the spec.
+- All handlers (`runTranscription`, `handleSaveDraft`, `handleRequestReview`, `handleApprove`) branch on a new `isForbiddenError` helper. On `API 403: ...` they show "You can only modify sessions you created." instead of the generic failure toast, covering the devtools-tamper case.
+
+**`AudioRecorder.tsx`:**
+- New optional `readOnly?: boolean` prop. When true, the Start/Stop buttons are hidden and a `data-testid="audio-readonly-placeholder"` message ("Recording controls are hidden in read-only mode.") renders in their place. Playback + upload status sections remain intact for any in-session state.
+
+**`VitalsDisplay.tsx`:**
+- `onEdit` is now optional. When omitted, the edit button row is suppressed entirely — lets the parent render the component in display-only mode without exposing a non-functional button.
+
+**Tests — `ownership.test.tsx` (8 new):**
+- Shared fixtures build a session owned by `PHYSICIAN_LEE` with vitals + a DRAFT SOAP note; `configureMockGet` routes `/auth/me` to the caller-specified current user and `/sessions/:id` to the session.
+- Owner view (current user === session.physicianId):
+  - No `ownership-banner` in the DOM.
+  - `vitals-edit` button visible.
+  - `Save Draft` button visible.
+- Non-owner view (current user !== session.physicianId):
+  - `ownership-banner` present, contains `Dr. James Lee` and "read-only".
+  - `start-recording-btn` absent; `audio-readonly-placeholder` present.
+  - `vitals-display` present, `vitals-edit` absent.
+  - None of `Save Draft` / `Request Review` / `Sign & Finalize` rendered.
+  - SOAP content still visible via `getByDisplayValue("Patient reports headache")` — the editor falls through to its read-only textarea form.
+
+**Files:**
+- `packages/server/src/routes/auth.ts` (+ `GET /me`)
+- `packages/web/src/hooks/useCurrentPhysician.ts` (new)
+- `packages/web/src/components/visit/OwnershipBanner.tsx` (new)
+- `packages/web/src/components/audio/AudioRecorder.tsx` (+ `readOnly`)
+- `packages/web/src/components/vitals/VitalsDisplay.tsx` (`onEdit` optional)
+- `packages/web/src/pages/ActiveVisitPage.tsx` (ownership wiring + 403 toasts)
+- `packages/web/src/__tests__/ownership.test.tsx` (new)
+- `CLAUDE.md` (new Current Phase section)
+
+---
+
 ### Entry #20 — Past Visits Redesign: Practice-Wide Archive
 
 Frontend slice of `claude/dashboard-visibility-feat.md` §2. Past Visits used to be a personal-scope list of the logged-in physician's visits with client-side search and a tiny status-pill filter. It's now the practice-wide archive — every visit from every physician — with server-driven filtering.

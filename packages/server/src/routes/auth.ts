@@ -43,4 +43,34 @@ router.post("/sync", async (req: Request, res: Response, next: NextFunction) => 
   }
 });
 
+/**
+ * GET /api/auth/me
+ *
+ * Returns the Physician record for the authenticated Clerk user.
+ * Used by the frontend to resolve the current physician's id for ownership
+ * comparisons (e.g. to decide whether the Active Visit page is read-only).
+ */
+router.get("/me", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+
+    const physician = await prisma.physician.findUnique({
+      where: { clerkId: userId },
+    });
+
+    if (!physician) {
+      res.status(404).json({ error: "Physician profile not found" });
+      return;
+    }
+
+    res.json(physician);
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;

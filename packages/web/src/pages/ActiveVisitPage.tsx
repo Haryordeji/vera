@@ -11,9 +11,16 @@ import { SoapWorkflowActions } from "@/components/soap/SoapWorkflowActions";
 import { AuditTimeline } from "@/components/audit/AuditTimeline";
 import { VitalsForm } from "@/components/vitals/VitalsForm";
 import { VitalsDisplay } from "@/components/vitals/VitalsDisplay";
+import { OwnershipBanner } from "@/components/visit/OwnershipBanner";
 import { useToast } from "@/components/ui/Toast";
 import { useApi } from "@/lib/api";
+import { useCurrentPhysician } from "@/hooks/useCurrentPhysician";
 import type { Session, AuditEvent, SoapNote, Vitals } from "@/lib/types";
+
+const FORBIDDEN_TOAST = "You can only modify sessions you created.";
+function isForbiddenError(err: unknown): boolean {
+  return err instanceof Error && err.message.startsWith("API 403");
+}
 import { CheckCircle, FileText, ClipboardList, Loader2, AlertCircle, RefreshCw, Activity } from "lucide-react";
 
 function formatDate(iso: string) {
@@ -30,6 +37,7 @@ export default function ActiveVisitPage() {
   const { id } = useParams<{ id: string }>();
   const { get, post, put } = useApi();
   const { showToast } = useToast();
+  const currentPhysician = useCurrentPhysician();
 
   const [session, setSession] = useState<Session | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -83,10 +91,14 @@ export default function ActiveVisitPage() {
         const transcribed = await post<Session>(`/sessions/${id}/transcribe`);
         setSession(transcribed);
         if (transcribed?.auditEvents) setAuditEvents(transcribed.auditEvents);
-      } catch {
-        setTranscriptionError("Transcription failed. Please try again.");
-        setSession(uploadedSession);
-        showToast("Transcription failed", "error");
+      } catch (err) {
+        if (isForbiddenError(err)) {
+          showToast(FORBIDDEN_TOAST, "error");
+        } else {
+          setTranscriptionError("Transcription failed. Please try again.");
+          setSession(uploadedSession);
+          showToast("Transcription failed", "error");
+        }
       } finally {
         setTranscribing(false);
       }
@@ -139,8 +151,11 @@ export default function ActiveVisitPage() {
       setSession((prev) => (prev ? { ...prev, soapNote: updated } : prev));
       showToast("Draft saved successfully");
       fetchAuditEvents();
-    } catch {
-      showToast("Failed to save draft", "error");
+    } catch (err) {
+      showToast(
+        isForbiddenError(err) ? FORBIDDEN_TOAST : "Failed to save draft",
+        "error"
+      );
     } finally {
       setSavingDraft(false);
     }
@@ -153,8 +168,11 @@ export default function ActiveVisitPage() {
       setSession((prev) => (prev ? { ...prev, soapNote: updated } : prev));
       showToast("Note submitted for review");
       fetchAuditEvents();
-    } catch {
-      showToast("Failed to submit for review", "error");
+    } catch (err) {
+      showToast(
+        isForbiddenError(err) ? FORBIDDEN_TOAST : "Failed to submit for review",
+        "error"
+      );
     }
   }, [id, post, showToast, fetchAuditEvents]);
 
@@ -167,8 +185,11 @@ export default function ActiveVisitPage() {
       );
       showToast("SOAP note approved and finalized");
       fetchAuditEvents();
-    } catch {
-      showToast("Failed to approve note", "error");
+    } catch (err) {
+      showToast(
+        isForbiddenError(err) ? FORBIDDEN_TOAST : "Failed to approve note",
+        "error"
+      );
     }
   }, [id, post, showToast, fetchAuditEvents]);
 
@@ -184,6 +205,14 @@ export default function ActiveVisitPage() {
   })();
 
   const isApproved = session?.soapNote?.workflowStatus === "APPROVED";
+  // Optimistic: until we know the current physician isn't the owner,
+  // assume they can edit. This avoids briefly flashing read-only mode for
+  // owners while /auth/me is in flight. Non-owners get the full read-only
+  // treatment once the lookup resolves, and the backend 403s any stray writes.
+  const knownNonOwner =
+    !!currentPhysician && !!session && currentPhysician.id !== session.physicianId;
+  const isOwner = !knownNonOwner;
+  const showOwnershipBanner = knownNonOwner;
 
   const rightPanel = (
     <AuditTimeline events={auditEvents} />
@@ -215,6 +244,10 @@ export default function ActiveVisitPage() {
           {session?.status && <StatusBadge status={session.status} />}
         </div>
 
+        {showOwnershipBanner && session?.physician && (
+          <OwnershipBanner physicianName={session.physician.fullName} />
+        )}
+
         {/* Vitals panel */}
         {id && (
           <section
@@ -225,7 +258,18 @@ export default function ActiveVisitPage() {
               <Activity className="w-4 h-4 text-slate-500" />
               <h3 className="text-sm font-semibold text-slate-700">Vitals</h3>
             </div>
-            {session?.vitals && !editingVitals ? (
+            {!isOwner ? (
+              session?.vitals ? (
+                <VitalsDisplay vitals={session.vitals} />
+              ) : (
+                <p
+                  data-testid="vitals-empty-readonly"
+                  className="text-sm text-slate-500"
+                >
+                  No vitals recorded.
+                </p>
+              )
+            ) : session?.vitals && !editingVitals ? (
               <VitalsDisplay
                 vitals={session.vitals}
                 onEdit={() => setEditingVitals(true)}
@@ -268,6 +312,7 @@ export default function ActiveVisitPage() {
             <AudioRecorder
               sessionId={id}
               onUploadComplete={handleUploadComplete}
+              readOnly={!isOwner}
             />
           ) : (
             <p className="text-sm text-slate-400">No session ID.</p>
@@ -361,14 +406,14 @@ export default function ActiveVisitPage() {
             <SoapNoteEditor
               note={soapEdits}
               loading={generatingSoap || transcribing}
-              readOnly={isApproved}
+              readOnly={isApproved || !isOwner}
               onChange={handleSoapChange}
             />
           )}
         </section>
 
         {/* Workflow action buttons */}
-        {session?.soapNote && (
+        {isOwner && session?.soapNote && (
           <SoapWorkflowActions
             workflowStatus={session.soapNote.workflowStatus}
             saving={savingDraft}
