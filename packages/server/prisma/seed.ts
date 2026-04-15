@@ -69,39 +69,87 @@ async function main() {
   });
   console.log(`Physician: ${physician.fullName} (${physician.id})`);
 
-  // Demo patients
-  const patients = await Promise.all([
-    prisma.patient.upsert({
-      where: { mrn: "MRN-001" },
-      update: {},
-      create: {
-        fullName: "James Okafor",
-        dateOfBirth: new Date("1978-03-15"),
-        mrn: "MRN-001",
-      },
-    }),
-    prisma.patient.upsert({
-      where: { mrn: "MRN-002" },
-      update: {},
-      create: {
-        fullName: "Maria Chen",
-        dateOfBirth: new Date("1992-07-22"),
-        mrn: "MRN-002",
-      },
-    }),
-    prisma.patient.upsert({
-      where: { mrn: "MRN-003" },
-      update: {},
-      create: {
-        fullName: "Robert Patel",
-        dateOfBirth: new Date("1955-11-08"),
-        mrn: "MRN-003",
-      },
-    }),
-  ]);
+  // Demo patients with rich profile data
+  const patientSeeds = [
+    {
+      mrn: "MRN-001",
+      fullName: "James Okafor",
+      dateOfBirth: new Date("1978-03-15"),
+      sex: "Male",
+      heightCm: 178,
+      eyeColor: "Brown",
+      bloodType: "O+",
+      allergies: [
+        { name: "Penicillin", severity: "Severe", reaction: "Anaphylaxis" },
+        { name: "Pollen", severity: "Mild", reaction: "Sneezing" },
+      ],
+      medications: [
+        { name: "Loratadine", dosage: "10mg", frequency: "Once daily as needed" },
+      ],
+    },
+    {
+      mrn: "MRN-002",
+      fullName: "Maria Chen",
+      dateOfBirth: new Date("1992-07-22"),
+      sex: "Female",
+      heightCm: 165,
+      eyeColor: "Brown",
+      bloodType: "A+",
+      allergies: [
+        { name: "Latex", severity: "Moderate", reaction: "Contact dermatitis" },
+      ],
+      medications: [
+        { name: "Sertraline", dosage: "50mg", frequency: "Once daily" },
+        { name: "Ibuprofen", dosage: "400mg", frequency: "As needed" },
+      ],
+    },
+    {
+      mrn: "MRN-003",
+      fullName: "Robert Patel",
+      dateOfBirth: new Date("1955-11-08"),
+      sex: "Male",
+      heightCm: 172,
+      eyeColor: "Hazel",
+      bloodType: "B+",
+      allergies: [
+        { name: "Sulfa drugs", severity: "Moderate", reaction: "Rash" },
+      ],
+      medications: [
+        { name: "Lisinopril", dosage: "10mg", frequency: "Once daily" },
+        { name: "Metformin", dosage: "500mg", frequency: "Twice daily" },
+      ],
+    },
+  ];
 
-  for (const p of patients) {
-    console.log(`Patient: ${p.fullName} (MRN: ${p.mrn})`);
+  const patients = [];
+  for (const seed of patientSeeds) {
+    const { allergies, medications, ...profile } = seed;
+    const patient = await prisma.patient.upsert({
+      where: { mrn: profile.mrn },
+      update: {
+        sex: profile.sex,
+        heightCm: profile.heightCm,
+        eyeColor: profile.eyeColor,
+        bloodType: profile.bloodType,
+      },
+      create: profile,
+    });
+    patients.push(patient);
+
+    // Replace allergies/medications so re-running the seed produces a clean state
+    await prisma.allergy.deleteMany({ where: { patientId: patient.id } });
+    await prisma.medication.deleteMany({ where: { patientId: patient.id } });
+
+    await prisma.allergy.createMany({
+      data: allergies.map((a) => ({ ...a, patientId: patient.id })),
+    });
+    await prisma.medication.createMany({
+      data: medications.map((m) => ({ ...m, patientId: patient.id })),
+    });
+
+    console.log(
+      `Patient: ${patient.fullName} (MRN: ${patient.mrn}) — ${allergies.length} allergies, ${medications.length} medications`
+    );
   }
 
   // Demo completed visit — James Okafor, cough encounter
@@ -115,6 +163,22 @@ async function main() {
 
   if (existingDemoSession) {
     console.log(`Demo session already exists (${existingDemoSession.id}), skipping.`);
+    // Ensure vitals exist for existing demo session
+    await prisma.vitals.upsert({
+      where: { sessionId: existingDemoSession.id },
+      update: {},
+      create: {
+        sessionId: existingDemoSession.id,
+        weightKg: 82.5,
+        bloodPressureSys: 128,
+        bloodPressureDia: 82,
+        heartRate: 76,
+        temperatureC: 36.8,
+        respiratoryRate: 16,
+        oxygenSaturation: 98,
+      },
+    });
+    console.log("Demo vitals ensured for existing session.");
   } else {
     const sessionDate = new Date("2026-04-10T09:30:00.000Z");
 
@@ -128,6 +192,21 @@ async function main() {
       },
     });
     console.log(`Demo session created: ${demoSession.id}`);
+
+    // Vitals
+    await prisma.vitals.create({
+      data: {
+        sessionId: demoSession.id,
+        weightKg: 82.5,
+        bloodPressureSys: 128,
+        bloodPressureDia: 82,
+        heartRate: 76,
+        temperatureC: 36.8,
+        respiratoryRate: 16,
+        oxygenSaturation: 98,
+      },
+    });
+    console.log("Demo vitals created.");
 
     // Transcript
     await prisma.transcript.create({

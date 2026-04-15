@@ -2,6 +2,41 @@
 
 ---
 
+## 2026-04-14
+### Entry #12 — Enhanced Patient Management: Schema + Seed + Tests
+
+Phase 1 of the Enhanced Patient Management feature — database layer only. Expanded the `Patient` model with profile fields and added `Allergy`, `Medication`, and `Vitals` models. 112 server tests passing (105 shown, 7 new).
+
+**Schema (`packages/server/prisma/schema.prisma`):**
+- `Patient` gained `sex`, `heightCm`, `eyeColor`, `bloodType` (all optional) plus `allergies` and `medications` relations.
+- `Allergy` — `id`, `patientId`, `name`, `severity?`, `reaction?`, `createdAt`. `onDelete: Cascade` from Patient.
+- `Medication` — `id`, `patientId`, `name`, `dosage?`, `frequency?`, `createdAt`. `onDelete: Cascade` from Patient.
+- `Vitals` — one-to-one with `Session` (unique `sessionId`). Fields: `weightKg`, `bloodPressureSys/Dia`, `heartRate`, `temperatureC`, `respiratoryRate`, `oxygenSaturation`, `recordedAt`.
+- Migration: `20260415002350_add_patient_profile_allergies_medications_vitals`.
+
+**Seed (`packages/server/prisma/seed.ts`):**
+- Three demo patients each get sex, height, eye color, blood type.
+- James Okafor: Penicillin (Severe, Anaphylaxis), Pollen (Mild). Loratadine 10mg PRN.
+- Maria Chen: Latex (Moderate, Dermatitis). Sertraline 50mg daily, Ibuprofen 400mg PRN.
+- Robert Patel: Sulfa drugs (Moderate, Rash). Lisinopril 10mg daily, Metformin 500mg BID.
+- Existing demo session (James Okafor cough visit) now has vitals (BP 128/82, HR 76, Temp 36.8°C, RR 16, SpO2 98%, 82.5kg). Seed re-runs idempotently — allergies/medications are replaced on each run, vitals upserted.
+
+**Tests (`packages/server/src/__tests__/patientProfile.test.ts`):** 7 new tests —
+- New profile fields save and retrieve correctly; all nullable.
+- Allergy creation + relation fetch with severity/reaction.
+- Medication creation + relation fetch with dosage/frequency.
+- Cascade delete: removing a patient deletes their allergies and medications.
+- Vitals creation and session relation fetch.
+- `Vitals.sessionId` unique constraint prevents duplicate vitals per session.
+
+**Key files:**
+- `packages/server/prisma/schema.prisma`
+- `packages/server/prisma/seed.ts`
+- `packages/server/prisma/migrations/20260415002350_add_patient_profile_allergies_medications_vitals/`
+- `packages/server/src/__tests__/patientProfile.test.ts`
+
+---
+
 ## 2026-04-10
 ### Entry #10 — Phase 10: Audit Trail & Version History
 

@@ -28,6 +28,12 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
+**In progress — Enhanced Patient Management feature** (`claude/patient-page-feat-spec.md`):
+- ✅ Database: `Patient` expanded (sex, heightCm, eyeColor, bloodType); new `Allergy`, `Medication`, `Vitals` models; cascade delete on patient relations; Vitals one-to-one with Session.
+- ✅ Seed data updated with profile fields, allergies, medications, and demo-session vitals.
+- ⏳ API endpoints (allergies, medications, vitals, expanded patient CRUD) — not yet implemented.
+- ⏳ Frontend patient list + detail pages, vitals UI — not yet implemented.
+
 ## Commands
 - `npm run dev` — starts both frontend and backend
 - `cd packages/server && npx prisma studio` — browse database

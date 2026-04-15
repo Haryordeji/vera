@@ -26,10 +26,38 @@ model Patient {
   fullName    String
   dateOfBirth DateTime?
   mrn         String?   @unique
+  sex         String?
+  heightCm    Float?
+  eyeColor    String?
+  bloodType   String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  sessions Session[]
+  sessions    Session[]
+  allergies   Allergy[]
+  medications Medication[]
+}
+
+model Allergy {
+  id        String   @id @default(uuid())
+  patientId String
+  name      String
+  severity  String?
+  reaction  String?
+  createdAt DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+}
+
+model Medication {
+  id        String   @id @default(uuid())
+  patientId String
+  name      String
+  dosage    String?
+  frequency String?
+  createdAt DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 }
 
 model Session {
@@ -46,7 +74,23 @@ model Session {
   patient     Patient      @relation(fields: [patientId], references: [id])
   transcript  Transcript?
   soapNote    SoapNote?
+  vitals      Vitals?
   auditEvents AuditEvent[]
+}
+
+model Vitals {
+  id               String   @id @default(uuid())
+  sessionId        String   @unique
+  weightKg         Float?
+  bloodPressureSys Int?
+  bloodPressureDia Int?
+  heartRate        Int?
+  temperatureC     Float?
+  respiratoryRate  Int?
+  oxygenSaturation Float?
+  recordedAt       DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id])
 }
 
 enum SessionStatus {
