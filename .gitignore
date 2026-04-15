@@ -143,3 +143,4 @@ vite.config.ts.timestamp-*
 prompts.md
 session-transcripts/
 patient-page-feat-prompts.md
+dashboard-visibility-feat-prompts.md
