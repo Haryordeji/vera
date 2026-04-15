@@ -28,8 +28,11 @@ export function usePatient() {
   const { get, post, put, del } = useApi();
 
   const fetchPatients = useCallback(
-    (search?: string) => {
-      const qs = search?.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
+    (search?: string, options?: { includeArchived?: boolean }) => {
+      const params = new URLSearchParams();
+      if (search?.trim()) params.set("search", search.trim());
+      if (options?.includeArchived) params.set("includeArchived", "true");
+      const qs = params.toString() ? `?${params.toString()}` : "";
       return get<Patient[]>(`/patients${qs}`);
     },
     [get]
@@ -38,6 +41,16 @@ export function usePatient() {
   const fetchPatient = useCallback(
     (id: string) => get<Patient>(`/patients/${id}`),
     [get]
+  );
+
+  const archivePatient = useCallback(
+    (id: string) => post<Patient>(`/patients/${id}/archive`),
+    [post]
+  );
+
+  const unarchivePatient = useCallback(
+    (id: string) => post<Patient>(`/patients/${id}/unarchive`),
+    [post]
   );
 
   const createPatient = useCallback(
@@ -85,6 +98,8 @@ export function usePatient() {
     fetchPatient,
     createPatient,
     updatePatient,
+    archivePatient,
+    unarchivePatient,
     addAllergy,
     deleteAllergy,
     addMedication,

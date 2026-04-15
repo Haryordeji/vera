@@ -3,6 +3,59 @@
 ---
 
 ## 2026-04-15
+### Entry #25 — UX Fixes (Issue 2): Archive Pattern (Frontend)
+
+Third slice of `claude/ux-fixes-1-spec.md`. Wires the archive backend from Entry #24 into the UI — confirmation dialogs, archived toggles on list pages, muted/badged cards, and owner-only archive actions on visits.
+
+**Hooks + types:**
+- `lib/types.ts` — `archivedAt?: string | null` added to `Patient`, `Session`, and `PatientSummary`. Optional so existing fixtures across the test suites still compile.
+- `hooks/usePatient.ts` — `fetchPatients` accepts `{ includeArchived?: boolean }` and emits `?includeArchived=true` when truthy. New `archivePatient(id)` and `unarchivePatient(id)` helpers wrap the POST endpoints.
+
+**`PatientCard` + `VisitCard` (shared archived visuals):**
+- Both converted from outer `<button>` to `<div role="button" tabIndex={0}>` with keyboard (`Enter`/`Space`) handling, to avoid nesting the new Unarchive button inside a button.
+- `data-archived` attribute + muted styling (`bg-slate-50 border-slate-200 opacity-75`) when archived.
+- "Archived" pill badge (`patient-card-archived-badge` / `visit-card-archived-badge`).
+- Optional `unarchivePatient` / `unarchiveSession` + `onUnarchive` props. When supplied and the record is archived, the trailing `ChevronRight` is replaced with an Unarchive button (`patient-card-unarchive` / `visit-card-unarchive`) that `stopPropagation`s so clicks don't trigger row navigation. `VisitCard` additionally requires `canUnarchive` (owner-only) before showing the button.
+
+**`PatientDetailPage`:**
+- `Archive Patient` button (`patient-archive-btn`) injected into the `PageHeader` children slot. Clicking opens a `ConfirmDialog` with copy "Are you sure you want to archive this patient? They will be hidden from the patient list but all data will be preserved."
+- Confirm → `archivePatient`, success toast, `navigate("/patients")`.
+- When the fetched patient is already archived: button swaps to `patient-unarchive-btn`, and a `patient-archived-banner` pill renders under the header ("Archived — hidden from the default patient list"). Unarchive is inline (no confirm dialog) and updates local state on success.
+
+**`ActiveVisitPage`:**
+- Owner-only `visit-archive-btn` appended to the `PageHeader` children slot next to the status badge. Styled as a subtle slate link (per spec: "secondary/danger action… subtle link, not a prominent button"). Non-owners never render it (the existing `isOwner` derivation gates it).
+- `ConfirmDialog` with copy "Are you sure you want to archive this visit? It will be hidden from all visit lists but the data will be preserved." → `POST /sessions/:id/archive` → toast "Visit archived" → `navigate("/visits")`.
+- When viewing an archived visit as the owner: `visit-unarchive-btn` shows in the header and a `visit-archived-banner` pill renders under the date. Calls `POST /sessions/:id/unarchive`, updates session in-place, and refreshes the audit timeline.
+- 403 responses reuse the existing `isForbiddenError` helper and surface the "You can only modify sessions you created." toast.
+
+**`PatientListPage` — Show Archived toggle:**
+- New `patient-show-archived-toggle` checkbox below the search row. `loadPatients` now threads `includeArchived` through and the debounced search effect also fires when the toggle flips.
+- Unarchive handler removes the patient from the current view when the toggle is off, or updates it in place when the toggle is on. Toast: "Patient restored".
+
+**`PastVisitsPage` — Include Archived toggle:**
+- New `visit-include-archived-toggle` checkbox in the filter bar, composed with the existing scope=all + search + physician + status query string.
+- Uses `useCurrentPhysician()` to derive per-row `canUnarchive`, so archived visits authored by someone else still render read-only with no unarchive button. Owner rows get the full round-trip (calls `POST /sessions/:id/unarchive`, shows "Visit restored" toast, and either updates or filters the row depending on toggle state).
+
+**Tests — new `archive.test.tsx` (10 cases):**
+- PatientListPage: toggle triggers `GET /patients?includeArchived=true`; archived patients render with the badge + unarchive button.
+- PatientDetailPage: Archive click opens the confirm dialog; confirm calls `POST /patients/:id/archive` and navigates to `/patients`; archived patients render the unarchive button + archived banner instead.
+- PastVisitsPage: toggle triggers `GET /sessions?scope=all&includeArchived=true`; only the visit owned by the current physician exposes the unarchive button in a mixed-owner list.
+- ActiveVisitPage: owner sees `visit-archive-btn`; non-owner doesn't; confirm dialog flow posts to `/sessions/:id/archive` and navigates to `/visits`.
+- All hoisted `useApi` / `useNavigate` mocks follow the existing test file patterns.
+
+**Files touched:**
+- `packages/web/src/lib/types.ts`
+- `packages/web/src/hooks/usePatient.ts`
+- `packages/web/src/components/patient/PatientCard.tsx`
+- `packages/web/src/components/visit/VisitCard.tsx`
+- `packages/web/src/pages/PatientDetailPage.tsx`
+- `packages/web/src/pages/PatientListPage.tsx`
+- `packages/web/src/pages/PastVisitsPage.tsx`
+- `packages/web/src/pages/ActiveVisitPage.tsx`
+- `packages/web/src/__tests__/archive.test.tsx` (new)
+
+---
+
 ### Entry #24 — UX Fixes (Issue 2): Archive Pattern (Backend)
 
 Second slice of `claude/ux-fixes-1-spec.md`. Implements the soft-delete/archive pattern for patients and sessions. Backend only — schema, endpoints, tests. Frontend controls (confirmation dialogs, archived-view toggles) are a separate slice.

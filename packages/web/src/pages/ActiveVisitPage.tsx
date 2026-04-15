@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusBadge } from "@/components/visit/StatusBadge";
 import { AudioRecorder } from "@/components/audio/AudioRecorder";
 import { TranscriptViewer } from "@/components/transcript/TranscriptViewer";
@@ -22,7 +23,7 @@ const FORBIDDEN_TOAST = "You can only modify sessions you created.";
 function isForbiddenError(err: unknown): boolean {
   return err instanceof Error && err.message.startsWith("API 403");
 }
-import { CheckCircle, FileText, ClipboardList, Loader2, AlertCircle, RefreshCw, Activity } from "lucide-react";
+import { CheckCircle, FileText, ClipboardList, Loader2, AlertCircle, RefreshCw, Activity, Archive, RotateCcw } from "lucide-react";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -36,9 +37,13 @@ function formatDate(iso: string) {
 
 export default function ActiveVisitPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { get, post, put } = useApi();
   const { showToast } = useToast();
   const currentPhysician = useCurrentPhysician();
+
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   const [session, setSession] = useState<Session | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -194,6 +199,42 @@ export default function ActiveVisitPage() {
     }
   }, [id, post, showToast, fetchAuditEvents]);
 
+  const handleConfirmArchive = useCallback(async () => {
+    if (!id || archiving) return;
+    setArchiving(true);
+    try {
+      await post<Session>(`/sessions/${id}/archive`);
+      setArchiveConfirmOpen(false);
+      showToast("Visit archived");
+      navigate("/visits");
+    } catch (err) {
+      showToast(
+        isForbiddenError(err) ? FORBIDDEN_TOAST : "Failed to archive visit",
+        "error"
+      );
+    } finally {
+      setArchiving(false);
+    }
+  }, [id, archiving, post, showToast, navigate]);
+
+  const handleUnarchiveVisit = useCallback(async () => {
+    if (!id || archiving) return;
+    setArchiving(true);
+    try {
+      const updated = await post<Session>(`/sessions/${id}/unarchive`);
+      setSession((prev) => (prev ? { ...prev, ...updated } : updated));
+      showToast("Visit restored");
+      fetchAuditEvents();
+    } catch (err) {
+      showToast(
+        isForbiddenError(err) ? FORBIDDEN_TOAST : "Failed to restore visit",
+        "error"
+      );
+    } finally {
+      setArchiving(false);
+    }
+  }, [id, archiving, post, showToast, fetchAuditEvents]);
+
   // Parse utterances from session transcript if present
   const utterances: Utterance[] = (() => {
     const raw = session?.transcript?.rawDiarizedText;
@@ -206,6 +247,7 @@ export default function ActiveVisitPage() {
   })();
 
   const isApproved = session?.soapNote?.workflowStatus === "APPROVED";
+  const isArchived = !!session?.archivedAt;
   // Optimistic: until we know the current physician isn't the owner,
   // assume they can edit. This avoids briefly flashing read-only mode for
   // owners while /auth/me is in flight. Non-owners get the full read-only
@@ -238,7 +280,55 @@ export default function ActiveVisitPage() {
           backLabel="Back"
         >
           {session?.status && <StatusBadge status={session.status} />}
+          {isOwner && session && (
+            isArchived ? (
+              <button
+                type="button"
+                onClick={handleUnarchiveVisit}
+                disabled={archiving}
+                data-testid="visit-unarchive-btn"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-md hover:bg-slate-50 disabled:opacity-50"
+              >
+                {archiving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="w-4 h-4" />
+                )}
+                Unarchive Visit
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setArchiveConfirmOpen(true)}
+                data-testid="visit-archive-btn"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-md transition-colors"
+              >
+                <Archive className="w-4 h-4" />
+                Archive Visit
+              </button>
+            )
+          )}
         </PageHeader>
+
+        {isArchived && (
+          <div
+            data-testid="visit-archived-banner"
+            className="-mt-2 inline-flex items-center gap-2 text-xs font-medium text-slate-600 bg-slate-100 border border-slate-200 rounded-full px-3 py-1"
+          >
+            <Archive className="w-3.5 h-3.5" />
+            Archived — hidden from visit lists
+          </div>
+        )}
+
+        <ConfirmDialog
+          open={archiveConfirmOpen}
+          title="Archive this visit?"
+          message="Are you sure you want to archive this visit? It will be hidden from all visit lists but the data will be preserved."
+          confirmLabel={archiving ? "Archiving…" : "Archive Visit"}
+          confirmClassName="px-4 py-2 text-sm font-medium text-white bg-slate-800 rounded-md hover:bg-slate-900 disabled:opacity-50"
+          onConfirm={handleConfirmArchive}
+          onCancel={() => setArchiveConfirmOpen(false)}
+        />
         <p className="-mt-3 text-sm text-slate-500">
           {session?.recordedAt ? formatDate(session.recordedAt) : "—"}
         </p>

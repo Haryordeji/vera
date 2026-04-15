@@ -18,12 +18,13 @@ const EMPTY_FORM: PatientInput = {
 };
 
 export default function PatientListPage() {
-  const { fetchPatients, createPatient } = usePatient();
+  const { fetchPatients, createPatient, unarchivePatient } = usePatient();
   const { showToast } = useToast();
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
 
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<PatientInput>(EMPTY_FORM);
@@ -31,9 +32,9 @@ export default function PatientListPage() {
   const [createError, setCreateError] = useState("");
 
   const loadPatients = useCallback(
-    async (searchTerm?: string) => {
+    async (searchTerm?: string, includeArchived?: boolean) => {
       try {
-        const result = await fetchPatients(searchTerm);
+        const result = await fetchPatients(searchTerm, { includeArchived });
         setPatients(result);
       } catch {
         showToast("Failed to load patients", "error");
@@ -46,18 +47,28 @@ export default function PatientListPage() {
 
   // Initial load
   useEffect(() => {
-    loadPatients();
-  }, [loadPatients]);
+    loadPatients(undefined, showArchived);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Debounced search — refetch from API when the query changes
+  // Debounced search + archive toggle — refetch from API when they change
   useEffect(() => {
     const timer = setTimeout(() => {
       setLoading(true);
-      loadPatients(search);
+      loadPatients(search, showArchived);
     }, 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, showArchived]);
+
+  const handlePatientUnarchived = useCallback((updated: Patient) => {
+    setPatients((prev) =>
+      showArchived
+        ? prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
+        : prev.filter((p) => p.id !== updated.id)
+    );
+    showToast("Patient restored");
+  }, [showArchived, showToast]);
 
   async function handleCreatePatient(e: React.FormEvent) {
     e.preventDefault();
@@ -81,7 +92,7 @@ export default function PatientListPage() {
       setForm(EMPTY_FORM);
       showToast("Patient created");
       setLoading(true);
-      loadPatients(search);
+      loadPatients(search, showArchived);
     } catch {
       setCreateError("Failed to create patient. Please try again.");
     } finally {
@@ -123,6 +134,17 @@ export default function PatientListPage() {
             Add New Patient
           </button>
         </div>
+
+        <label className="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+            data-testid="patient-show-archived-toggle"
+            className="rounded border-slate-300 text-blue-600 focus:ring-blue-400"
+          />
+          Show archived patients
+        </label>
 
         {/* Create form */}
         {showCreate && (
@@ -278,7 +300,12 @@ export default function PatientListPage() {
         ) : (
           <div className="space-y-2">
             {patients.map((p) => (
-              <PatientCard key={p.id} patient={p} />
+              <PatientCard
+                key={p.id}
+                patient={p}
+                unarchivePatient={unarchivePatient}
+                onUnarchive={handlePatientUnarchived}
+              />
             ))}
             <p className="text-xs text-slate-400 text-center pt-1">
               {patients.length} patient{patients.length !== 1 ? "s" : ""}

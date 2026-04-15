@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { VisitCard } from "@/components/visit/VisitCard";
 import { PhysicianFilter } from "@/components/visit/PhysicianFilter";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { useApi } from "@/lib/api";
+import { useCurrentPhysician } from "@/hooks/useCurrentPhysician";
 import type { Session, SessionStatus } from "@/lib/types";
 import { Clock, Search, SlidersHorizontal } from "lucide-react";
 
@@ -18,8 +19,9 @@ const STATUS_OPTIONS: { label: string; value: SessionStatus | "ALL" }[] = [
 ];
 
 export default function PastVisitsPage() {
-  const { get } = useApi();
+  const { get, post } = useApi();
   const { showToast } = useToast();
+  const currentPhysician = useCurrentPhysician();
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +30,7 @@ export default function PastVisitsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [physicianId, setPhysicianId] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus | "ALL">("ALL");
+  const [includeArchived, setIncludeArchived] = useState(false);
 
   // Debounce search input → 300ms
   useEffect(() => {
@@ -41,13 +44,28 @@ export default function PastVisitsPage() {
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (physicianId) params.set("physician", physicianId);
     if (status !== "ALL") params.set("status", status);
+    if (includeArchived) params.set("includeArchived", "true");
 
     setLoading(true);
     get<Session[]>(`/sessions?${params.toString()}`)
       .then(setSessions)
       .catch(() => showToast("Failed to load visits", "error"))
       .finally(() => setLoading(false));
-  }, [get, debouncedSearch, physicianId, status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [get, debouncedSearch, physicianId, status, includeArchived]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const unarchiveSession = useCallback(
+    (sessionId: string) => post<Session>(`/sessions/${sessionId}/unarchive`),
+    [post]
+  );
+
+  const handleVisitUnarchived = useCallback((updated: Session) => {
+    setSessions((prev) =>
+      includeArchived
+        ? prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s))
+        : prev.filter((s) => s.id !== updated.id)
+    );
+    showToast("Visit restored");
+  }, [includeArchived, showToast]);
 
   return (
     <AppLayout title="Past Visits">
@@ -79,6 +97,16 @@ export default function PastVisitsPage() {
             <span>Filters:</span>
           </div>
           <PhysicianFilter value={physicianId} onChange={setPhysicianId} />
+          <label className="inline-flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeArchived}
+              onChange={(e) => setIncludeArchived(e.target.checked)}
+              data-testid="visit-include-archived-toggle"
+              className="rounded border-slate-300 text-blue-600 focus:ring-blue-400"
+            />
+            Include archived
+          </label>
           <select
             data-testid="status-filter"
             aria-label="Filter by status"
@@ -126,7 +154,15 @@ export default function PastVisitsPage() {
         ) : (
           <div className="space-y-2" data-testid="past-visits-list">
             {sessions.map((s) => (
-              <VisitCard key={s.id} session={s} />
+              <VisitCard
+                key={s.id}
+                session={s}
+                canUnarchive={
+                  !!currentPhysician && s.physicianId === currentPhysician.id
+                }
+                unarchiveSession={unarchiveSession}
+                onUnarchive={handleVisitUnarchived}
+              />
             ))}
             <p className="text-xs text-slate-400 text-center pt-1">
               {sessions.length} visit{sessions.length !== 1 ? "s" : ""}

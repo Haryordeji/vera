@@ -42,6 +42,7 @@ export interface PatientSummary {
   id: string;
   status: SessionStatus;
   recordedAt: string;
+  archivedAt?: string | null;
   physician: { fullName: string };
   soapNote: { workflowStatus: WorkflowStatus } | null;
 }
@@ -55,6 +56,7 @@ export interface Patient {
   heightCm: number | null;
   eyeColor: string | null;
   bloodType: string | null;
+  archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   // Populated by GET /api/patients (list)
@@ -109,6 +111,7 @@ export interface Session {
   status: SessionStatus;
   recordedAt: string;
   audioFileUrl: string | null;
+  archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   // Populated by GET /api/sessions and GET /api/sessions/:id

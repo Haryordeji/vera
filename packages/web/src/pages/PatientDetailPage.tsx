@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
+import { Archive, RotateCcw, Loader2 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 import { usePatient } from "@/hooks/usePatient";
 import type { Patient, Allergy, Medication } from "@/lib/types";
@@ -13,11 +15,14 @@ import { PatientVisitHistory } from "@/components/patient/PatientVisitHistory";
 
 export default function PatientDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { fetchPatient } = usePatient();
+  const navigate = useNavigate();
+  const { fetchPatient, archivePatient, unarchivePatient } = usePatient();
   const { showToast } = useToast();
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -53,6 +58,68 @@ export default function PatientDetailPage() {
     setPatient((prev) => (prev ? { ...prev, medications: next } : prev));
   }, []);
 
+  const isArchived = !!patient?.archivedAt;
+
+  const handleConfirmArchive = async () => {
+    if (!patient || archiving) return;
+    setArchiving(true);
+    try {
+      await archivePatient(patient.id);
+      setConfirmOpen(false);
+      showToast("Patient archived");
+      navigate("/patients");
+    } catch {
+      showToast("Failed to archive patient", "error");
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  const handleUnarchive = async () => {
+    if (!patient || archiving) return;
+    setArchiving(true);
+    try {
+      const updated = await unarchivePatient(patient.id);
+      setPatient((prev) => (prev ? { ...prev, ...updated } : prev));
+      showToast("Patient restored");
+    } catch {
+      showToast("Failed to unarchive patient", "error");
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  const headerAction = patient && !loading
+    ? isArchived
+      ? (
+          <button
+            type="button"
+            onClick={handleUnarchive}
+            disabled={archiving}
+            data-testid="patient-unarchive-btn"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-md hover:bg-slate-50 disabled:opacity-50"
+          >
+            {archiving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RotateCcw className="w-4 h-4" />
+            )}
+            Unarchive Patient
+          </button>
+        )
+      : (
+          <button
+            type="button"
+            onClick={() => setConfirmOpen(true)}
+            data-testid="patient-archive-btn"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-md hover:bg-slate-50 hover:text-slate-700"
+          >
+            <Archive className="w-4 h-4" />
+            Archive Patient
+          </button>
+        )
+    : null;
+
   return (
     <AppLayout title={patient?.fullName ?? "Patient Detail"}>
       <div className="px-6 py-6 max-w-6xl mx-auto">
@@ -60,6 +127,28 @@ export default function PatientDetailPage() {
           title={patient?.fullName ?? "Patient Detail"}
           backTo="/patients"
           backLabel="Back to Patients"
+        >
+          {headerAction}
+        </PageHeader>
+
+        {isArchived && (
+          <div
+            data-testid="patient-archived-banner"
+            className="mb-4 -mt-2 inline-flex items-center gap-2 text-xs font-medium text-slate-600 bg-slate-100 border border-slate-200 rounded-full px-3 py-1"
+          >
+            <Archive className="w-3.5 h-3.5" />
+            Archived — hidden from the default patient list
+          </div>
+        )}
+
+        <ConfirmDialog
+          open={confirmOpen}
+          title="Archive this patient?"
+          message="Are you sure you want to archive this patient? They will be hidden from the patient list but all data will be preserved."
+          confirmLabel={archiving ? "Archiving…" : "Archive Patient"}
+          confirmClassName="px-4 py-2 text-sm font-medium text-white bg-slate-800 rounded-md hover:bg-slate-900 disabled:opacity-50"
+          onConfirm={handleConfirmArchive}
+          onCancel={() => setConfirmOpen(false)}
         />
 
         {loading ? (
