@@ -3,6 +3,46 @@
 ---
 
 ## 2026-04-14
+### Entry #19 — Dashboard Redesign: Active Work Queue
+
+Frontend slice of `claude/dashboard-visibility-feat.md` §1 — the dashboard is no longer a generic visit list. It's now focused on what the logged-in physician still needs to do.
+
+**`DashboardPage.tsx` rewrite:**
+- Fetches `GET /api/sessions?scope=mine` (the new scope param from Entry #18) and derives everything client-side.
+- Three stat cards in a responsive grid:
+  - **In Progress** — sessions with status `RECORDING | TRANSCRIBING | GENERATING_NOTE`.
+  - **Awaiting Review** — sessions with status `IN_REVIEW`.
+  - **Completed This Week** — sessions with status `COMPLETED` whose `recordedAt` is within the last 7 days (client-side date filter, no second fetch needed since `scope=mine` already returns completed ones).
+- Prominent Start New Visit CTA below the stats (blue pill, same style as elsewhere).
+- Active session list filters out `COMPLETED` and renders each remaining session via the new `ActiveSessionCard`. Skeleton placeholders during load.
+- Empty state when `activeSessions.length === 0`: dashed slate card with "No active sessions. Start a new visit or view past visits." The "view past visits" fragment is an inline button that navigates to `/visits`.
+- "View all past visits →" link below the list (bottom-right) for the non-empty case too.
+- Greeting copy updated: "Here's what needs your attention today."
+
+**New component — `components/visit/ActiveSessionCard.tsx`:**
+- Similar shape to `VisitCard` but tailored for the dashboard: avatar, patient name + date on the top row, and an action-needed description on a second line driven by a `Record<Exclude<SessionStatus, "COMPLETED">, string>` map:
+  - `RECORDING` → "Visit started, awaiting recording"
+  - `TRANSCRIBING` → "Audio uploaded, transcription in progress"
+  - `GENERATING_NOTE` → "Transcript ready, generating SOAP note"
+  - `IN_REVIEW` → "SOAP note draft ready for review"
+- Exposes `data-testid="active-session-card"` and `data-status={status}` for deterministic test queries. Clicking navigates to `/visits/:id`.
+- Physician name is intentionally omitted — every card is the current physician's own work.
+
+**Tests — `dashboard.test.tsx` (10 new):**
+- `DashboardPage`: fetches with `scope=mine`; stat counts are correct across a mixed fixture (3 in-progress, 2 in-review, 2 completed-this-week, 1 completed-10-days-ago ignored); active list contains only non-completed rows; empty state renders when every session is completed; greeting includes first name from mocked Clerk user; Start New Visit CTA renders.
+- `ActiveSessionCard`: parameterized `it.each` over all four non-completed statuses verifying the correct action-needed copy and `data-status` attribute.
+- Dashboard-specific `vi.hoisted` API mock so the fetch can be stubbed per test. Scoped to this file — doesn't touch the existing `routing.test.tsx` dashboard smoke test, which continues to pass since the greeting + Start New Visit button assertions still hold.
+
+**Files touched:**
+- `packages/web/src/pages/DashboardPage.tsx` (rewrite)
+- `packages/web/src/components/visit/ActiveSessionCard.tsx` (new)
+- `packages/web/src/__tests__/dashboard.test.tsx` (new, 10 tests)
+- `CLAUDE.md`
+
+Dashboard test file run in isolation: **10/10 passing** (`npx vitest run src/__tests__/dashboard.test.tsx`, ~3.2s). Full web suite run skipped at user request.
+
+---
+
 ### Entry #18 — Cross-Physician Visibility: Backend (scoped queries + ownership writes)
 
 Backend slice of `claude/dashboard-visibility-feat.md` — opens up read access practice-wide while keeping writes owner-scoped. Frontend changes (dashboard redesign, past visits redesign, ownership banner) are not part of this entry.

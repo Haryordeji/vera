@@ -2,12 +2,18 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { VisitCard } from "@/components/visit/VisitCard";
+import { ActiveSessionCard } from "@/components/visit/ActiveSessionCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { useApi } from "@/lib/api";
-import type { Session } from "@/lib/types";
-import { ClipboardList, Plus, Clock, CheckCircle2 } from "lucide-react";
+import type { Session, SessionStatus } from "@/lib/types";
+import { Plus, Loader2, ClipboardCheck, CheckCircle2, ArrowRight } from "lucide-react";
+
+const IN_PROGRESS_STATUSES: SessionStatus[] = [
+  "RECORDING",
+  "TRANSCRIBING",
+  "GENERATING_NOTE",
+];
 
 export default function DashboardPage() {
   const { get } = useApi();
@@ -19,7 +25,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    get<Session[]>("/sessions")
+    get<Session[]>("/sessions?scope=mine")
       .then(setSessions)
       .catch(() => showToast("Failed to load visits", "error"))
       .finally(() => setLoading(false));
@@ -34,18 +40,17 @@ export default function DashboardPage() {
 
   const firstName = user?.firstName ?? "";
 
-  // Quick stats derived from sessions
-  const thisWeek = sessions.filter((s) => {
-    const d = new Date(s.recordedAt);
-    const now = new Date();
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    return d >= weekAgo;
-  }).length;
+  const inProgressCount = sessions.filter((s) =>
+    IN_PROGRESS_STATUSES.includes(s.status)
+  ).length;
+  const awaitingReviewCount = sessions.filter((s) => s.status === "IN_REVIEW").length;
 
-  const pendingReview = sessions.filter((s) => s.status === "IN_REVIEW").length;
-  const completed = sessions.filter((s) => s.status === "COMPLETED").length;
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const completedThisWeek = sessions.filter(
+    (s) => s.status === "COMPLETED" && new Date(s.recordedAt).getTime() >= weekAgo
+  ).length;
 
-  const recentSessions = sessions.slice(0, 5);
+  const activeSessions = sessions.filter((s) => s.status !== "COMPLETED");
 
   return (
     <AppLayout title="Dashboard">
@@ -56,62 +61,107 @@ export default function DashboardPage() {
             {greeting}{firstName ? `, ${firstName}` : ""}
           </h2>
           <p className="mt-1 text-slate-500">
-            Ready to start documenting? Your patients are waiting.
+            Here's what needs your attention today.
           </p>
         </div>
 
         {/* Quick stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <StatCard label="Visits this week" value={thisWeek} icon={ClipboardList} loading={loading} />
-          <StatCard label="Pending review" value={pendingReview} icon={Clock} loading={loading} />
-          <StatCard label="Completed" value={completed} icon={CheckCircle2} loading={loading} />
+        <div
+          data-testid="quick-stats"
+          className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+        >
+          <StatCard
+            testId="stat-in-progress"
+            label="In Progress"
+            value={inProgressCount}
+            icon={Loader2}
+            loading={loading}
+          />
+          <StatCard
+            testId="stat-awaiting-review"
+            label="Awaiting Review"
+            value={awaitingReviewCount}
+            icon={ClipboardCheck}
+            loading={loading}
+          />
+          <StatCard
+            testId="stat-completed-this-week"
+            label="Completed This Week"
+            value={completedThisWeek}
+            icon={CheckCircle2}
+            loading={loading}
+          />
         </div>
 
-        {/* Recent visits */}
+        {/* Start New Visit CTA */}
+        <div>
+          <button
+            onClick={() => navigate("/visits/new")}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Start New Visit
+          </button>
+        </div>
+
+        {/* Active sessions */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-slate-700">Recent Visits</h3>
-            {sessions.length > 5 && (
-              <button
-                onClick={() => navigate("/visits")}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-              >
-                View all →
-              </button>
-            )}
+            <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+              Your Active Sessions
+            </h3>
           </div>
 
           {loading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="bg-white rounded-lg border border-slate-200 px-4 py-3 flex items-center gap-4">
-                  <Skeleton className="w-full h-5" />
-                  <Skeleton className="w-24 h-5 shrink-0" />
+                <div
+                  key={i}
+                  className="bg-white rounded-lg border border-slate-200 px-5 py-4 flex items-center gap-4"
+                >
+                  <Skeleton className="w-9 h-9 rounded-full shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="w-40 h-4" />
+                    <Skeleton className="w-56 h-3" />
+                  </div>
+                  <Skeleton className="w-20 h-5 shrink-0" />
                 </div>
               ))}
             </div>
-          ) : recentSessions.length === 0 ? (
-            <div className="bg-blue-50 border border-blue-100 rounded-lg px-6 py-8 text-center">
-              <ClipboardList className="w-10 h-10 text-blue-400 mx-auto mb-3" />
-              <h3 className="text-lg font-semibold text-slate-800 mb-1">No visits yet</h3>
-              <p className="text-sm text-slate-500 mb-5">
-                Start a new visit to record a patient encounter and generate a SOAP note.
+          ) : activeSessions.length === 0 ? (
+            <div
+              data-testid="dashboard-empty-state"
+              className="bg-slate-50 border border-dashed border-slate-200 rounded-lg px-6 py-10 text-center"
+            >
+              <p className="text-sm text-slate-600">
+                No active sessions. Start a new visit or{" "}
+                <button
+                  onClick={() => navigate("/visits")}
+                  className="text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  view past visits
+                </button>
+                .
               </p>
-              <button
-                onClick={() => navigate("/visits/new")}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Start New Visit
-              </button>
             </div>
           ) : (
-            <div className="space-y-2">
-              {recentSessions.map((s) => (
-                <VisitCard key={s.id} session={s} />
+            <div data-testid="active-sessions-list" className="space-y-2">
+              {activeSessions.map((s) => (
+                <ActiveSessionCard key={s.id} session={s} />
               ))}
             </div>
           )}
+
+          {/* Past visits link */}
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => navigate("/visits")}
+              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+            >
+              View all past visits
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
         </div>
       </div>
     </AppLayout>
@@ -119,18 +169,23 @@ export default function DashboardPage() {
 }
 
 function StatCard({
+  testId,
   label,
   value,
   icon: Icon,
   loading,
 }: {
+  testId: string;
   label: string;
   value: number;
   icon: React.ElementType;
   loading: boolean;
 }) {
   return (
-    <div className="bg-white rounded-lg border border-slate-200 px-5 py-4">
+    <div
+      data-testid={testId}
+      className="bg-white rounded-lg border border-slate-200 px-5 py-4"
+    >
       <div className="flex items-center justify-between">
         <span className="text-sm text-slate-500">{label}</span>
         <Icon className="w-4 h-4 text-slate-300" />
@@ -139,7 +194,12 @@ function StatCard({
         {loading ? (
           <Skeleton className="w-8 h-7" />
         ) : (
-          <p className="text-2xl font-semibold text-slate-800">{value}</p>
+          <p
+            data-testid={`${testId}-value`}
+            className="text-2xl font-semibold text-slate-800"
+          >
+            {value}
+          </p>
         )}
       </div>
     </div>

@@ -28,6 +28,12 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
+**Dashboard redesign (active work queue) — COMPLETE** (`claude/dashboard-visibility-feat.md` §1):
+- ✅ `DashboardPage` rewritten: fetches `/sessions?scope=mine`, filters out `COMPLETED`, renders three stat cards (In Progress = RECORDING+TRANSCRIBING+GENERATING_NOTE, Awaiting Review = IN_REVIEW, Completed This Week = COMPLETED in last 7 days), a prominent Start New Visit CTA, and a list of active sessions.
+- ✅ New `ActiveSessionCard` component shows patient name, date, status badge, and an action-needed description per status (recording/transcribing/generating/in-review).
+- ✅ Empty state when no active sessions with inline link to past visits; "View all past visits →" link at the bottom.
+- ✅ Tests (`dashboard.test.tsx`, 10): scope=mine fetch, stat counts, non-completed filter, per-status action copy, empty state, greeting, CTA.
+
 **Cross-physician visibility (backend) — COMPLETE** (`claude/dashboard-visibility-feat.md`):
 - ✅ `GET /api/sessions` accepts `?scope=mine` (default) / `?scope=all`, plus `?physician=<id>` and `?search=` (case-insensitive patient fullName / mrn). Existing `?status=` filter still works with both scopes. When `scope=all`, response includes `physician: { id, fullName }`.
 - ✅ `GET /api/sessions/:id` is practice-wide read — any authenticated physician can view any session. Response includes `physician: { id, fullName, credentials }`.
