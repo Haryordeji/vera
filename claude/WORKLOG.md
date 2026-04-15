@@ -3,6 +3,39 @@
 ---
 
 ## 2026-04-14
+### Entry #14 — Enhanced Patient Management: Patient List Page (Frontend)
+
+Phase 3 of the feature — frontend list page and navigation. Users can now browse, search, and create patients from `/patients`.
+
+**API client (`packages/web/src/lib/api.ts`):**
+- Added `del(path)` method (stable `useCallback` ref) — returns void, throws on non-2xx.
+
+**Types (`packages/web/src/lib/types.ts`):**
+- `Patient` expanded with `sex | heightCm | eyeColor | bloodType` and optional list-mode `_count` / detail-mode `allergies`, `medications`, `sessions`.
+- New `Allergy`, `Medication`, `Vitals`, `PatientSummary` interfaces.
+- `Session` gained optional `vitals`.
+
+**Domain hook (`packages/web/src/hooks/usePatient.ts`):**
+- `fetchPatients(search?)`, `fetchPatient(id)`, `createPatient`, `updatePatient`, `addAllergy`, `deleteAllergy`, `addMedication`, `updateMedication`, `deleteMedication` — all stable refs via `useCallback`.
+
+**Components / pages:**
+- `components/patient/PatientCard.tsx` — button card with name, MRN, DOB, visit count, allergy count; navigates to `/patients/:id`; amber highlight when allergies > 0.
+- `pages/PatientListPage.tsx` — fetches on mount, debounced search (300ms → `?search=`), skeleton loading state, empty state, inline "Add New Patient" form covering fullName/DOB/MRN/sex/heightCm/eyeColor/bloodType, toast on success.
+- `pages/PatientDetailPage.tsx` — placeholder with back link (full detail UI is Phase D).
+
+**Routing & nav:**
+- `App.tsx` — new routes `/patients` and `/patients/:id`.
+- `components/layout/Sidebar.tsx` — "Patients" entry (Users icon) inserted between Dashboard and Past Visits.
+
+**Tests:**
+- `__tests__/patientList.test.tsx` — 9 new tests: PatientCard rendering (name/MRN/DOB/counts), pluralization, zero-count fallback, detail-link aria-label; PatientListPage API fetch + footer count, empty state, debounced search with `?search=`, create-form open, create-form submit posting to `/patients`.
+- `__tests__/routing.test.tsx` — updated sidebar assertions to include Patients link and verify ordering + href.
+- `__tests__/components.test.tsx` — fixture patched for new Patient profile fields.
+
+**Server suite:** 129/129 passing (unchanged from Entry #13 — no backend changes in this entry).
+
+---
+
 ### Entry #13 — Enhanced Patient Management: API Endpoints
 
 Phase 2 of the feature — API layer. Added allergy, medication, and vitals endpoints; expanded the existing patient/session routes to include new fields and nested data. 129 server tests passing (24 new).

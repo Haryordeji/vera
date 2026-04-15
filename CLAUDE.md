@@ -32,7 +32,8 @@ All phases complete. The app is demo-ready.
 - ✅ Database: `Patient` expanded (sex, heightCm, eyeColor, bloodType); new `Allergy`, `Medication`, `Vitals` models; cascade delete on patient relations; Vitals one-to-one with Session.
 - ✅ Seed data updated with profile fields, allergies, medications, and demo-session vitals.
 - ✅ API: allergy/medication CRUD nested under patients; vitals POST/PUT with 409 on duplicate + `VITALS_RECORDED` audit event; patient create/update accept new fields; list returns `_count`; detail returns nested allergies/medications/sessions; session detail now includes vitals.
-- ⏳ Frontend patient list + detail pages, vitals UI — not yet implemented.
+- ✅ Frontend patient list page: `/patients` route, sidebar nav entry, `PatientCard`, debounced search, inline create form with all profile fields, `usePatient` hook wrapping the API surface.
+- ⏳ Frontend patient detail page (placeholder only) and vitals UI — not yet implemented.
 
 ## Commands
 - `npm run dev` — starts both frontend and backend

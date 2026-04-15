@@ -57,6 +57,21 @@ export function useApi() {
     [request]
   );
 
+  const del = useCallback(
+    async (path: string): Promise<void> => {
+      const token = await getToken();
+      const res = await fetch(`${BASE}${path}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`API ${res.status}: ${body}`);
+      }
+    },
+    [getToken]
+  );
+
   /** Upload a file as multipart/form-data (no Content-Type header — browser sets it with boundary). */
   const uploadFile = useCallback(
     async <T>(path: string, formData: FormData): Promise<T> => {
@@ -75,5 +90,5 @@ export function useApi() {
     [getToken]
   );
 
-  return { get, post, put, uploadFile };
+  return { get, post, put, del, uploadFile };
 }

@@ -69,7 +69,7 @@ const makeSession = (overrides: Partial<Session> = {}): Session => ({
   audioFileUrl: null,
   createdAt: "2026-04-10T10:00:00.000Z",
   updatedAt: "2026-04-10T10:00:00.000Z",
-  patient: { id: "pat-1", fullName: "Jane Doe", mrn: "MRN-100", dateOfBirth: null, createdAt: "", updatedAt: "" },
+  patient: { id: "pat-1", fullName: "Jane Doe", mrn: "MRN-100", dateOfBirth: null, sex: null, heightCm: null, eyeColor: null, bloodType: null, createdAt: "", updatedAt: "" },
   ...overrides,
 });
 

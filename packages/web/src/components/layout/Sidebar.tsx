@@ -6,11 +6,13 @@ import {
   Clock,
   Settings,
   Plus,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/patients", label: "Patients", icon: Users, end: false },
   { to: "/visits", label: "Past Visits", icon: Clock, end: false },
   { to: "/settings", label: "Settings", icon: Settings, end: false },
 ];

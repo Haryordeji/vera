@@ -157,8 +157,22 @@ describe("Sidebar navigation", () => {
   it("renders all nav links", async () => {
     await renderAt(<Sidebar />);
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("Patients")).toBeInTheDocument();
     expect(screen.getByText("Past Visits")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
+  });
+
+  it("Patients link appears between Dashboard and Past Visits with correct href", async () => {
+    await renderAt(<Sidebar />);
+    const link = screen.getByRole("link", { name: /patients/i });
+    expect(link).toHaveAttribute("href", "/patients");
+
+    const labels = screen.getAllByRole("link").map((el) => el.textContent);
+    const dashIdx = labels.findIndex((l) => l?.includes("Dashboard"));
+    const patientsIdx = labels.findIndex((l) => l?.includes("Patients"));
+    const visitsIdx = labels.findIndex((l) => l?.includes("Past Visits"));
+    expect(dashIdx).toBeLessThan(patientsIdx);
+    expect(patientsIdx).toBeLessThan(visitsIdx);
   });
 
   it("renders the Start New Visit button", async () => {

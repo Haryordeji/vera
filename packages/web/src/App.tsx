@@ -14,6 +14,8 @@ import DashboardPage from "./pages/DashboardPage";
 import NewVisitPage from "./pages/NewVisitPage";
 import ActiveVisitPage from "./pages/ActiveVisitPage";
 import PastVisitsPage from "./pages/PastVisitsPage";
+import PatientListPage from "./pages/PatientListPage";
+import PatientDetailPage from "./pages/PatientDetailPage";
 import SettingsPage from "./pages/SettingsPage";
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
@@ -30,6 +32,8 @@ function AuthenticatedRoutes() {
         <Route path="/visits/new" element={<NewVisitPage />} />
         <Route path="/visits/:id" element={<ActiveVisitPage />} />
         <Route path="/visits" element={<PastVisitsPage />} />
+        <Route path="/patients" element={<PatientListPage />} />
+        <Route path="/patients/:id" element={<PatientDetailPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Routes>
     </AuthSync>
