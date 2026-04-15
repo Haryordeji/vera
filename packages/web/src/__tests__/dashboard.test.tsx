@@ -98,14 +98,14 @@ const ISO_10_DAYS_AGO = new Date(NOW.getTime() - 10 * 24 * 60 * 60 * 1000).toISO
 // ---------------------------------------------------------------------------
 describe("DashboardPage", () => {
   it("fetches sessions with scope=mine", async () => {
-    mockGet.mockResolvedValueOnce([]);
+    mockGet.mockResolvedValue([]);
     renderPage();
     await waitFor(() => expect(mockGet).toHaveBeenCalled());
     expect(mockGet).toHaveBeenCalledWith("/sessions?scope=mine");
   });
 
   it("renders quick stats with correct counts", async () => {
-    mockGet.mockResolvedValueOnce([
+    mockGet.mockResolvedValue([
       makeSession("s1", "RECORDING", ISO_NOW),
       makeSession("s2", "TRANSCRIBING", ISO_NOW),
       makeSession("s3", "GENERATING_NOTE", ISO_NOW),
@@ -129,7 +129,7 @@ describe("DashboardPage", () => {
   });
 
   it("only shows non-completed sessions in the active list", async () => {
-    mockGet.mockResolvedValueOnce([
+    mockGet.mockResolvedValue([
       makeSession("active-1", "RECORDING", ISO_NOW, "Alice"),
       makeSession("active-2", "IN_REVIEW", ISO_NOW, "Bob"),
       makeSession("done-1", "COMPLETED", ISO_NOW, "Carol"),
@@ -149,7 +149,7 @@ describe("DashboardPage", () => {
   });
 
   it("renders empty state when there are no active sessions", async () => {
-    mockGet.mockResolvedValueOnce([
+    mockGet.mockResolvedValue([
       makeSession("c1", "COMPLETED", ISO_3_DAYS_AGO),
     ]);
 
@@ -158,14 +158,16 @@ describe("DashboardPage", () => {
     await waitFor(() =>
       expect(screen.getByTestId("dashboard-empty-state")).toBeInTheDocument()
     );
-    expect(screen.getByText(/No active sessions/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /view past visits/i })).toBeInTheDocument();
+    expect(
+      screen.getByText(/All caught up! No sessions need your attention\./i)
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-empty-cta")).toBeInTheDocument();
     // The active list wrapper should not render
     expect(screen.queryByTestId("active-sessions-list")).not.toBeInTheDocument();
   });
 
   it("renders the greeting with the user's first name", async () => {
-    mockGet.mockResolvedValueOnce([]);
+    mockGet.mockResolvedValue([]);
     renderPage();
     await waitFor(() =>
       expect(screen.getByText(/Good (morning|afternoon|evening), Sarah/)).toBeInTheDocument()
@@ -173,12 +175,35 @@ describe("DashboardPage", () => {
   });
 
   it("renders the Start New Visit CTA button", async () => {
-    mockGet.mockResolvedValueOnce([]);
+    mockGet.mockResolvedValue([]);
     renderPage();
     await waitFor(() => {
       const buttons = screen.getAllByRole("button", { name: /start new visit/i });
       expect(buttons.length).toBeGreaterThanOrEqual(1);
     });
+  });
+
+  it("sidebar shows an active-session badge reflecting the non-completed count", async () => {
+    mockGet.mockResolvedValue([
+      makeSession("s1", "RECORDING", ISO_NOW),
+      makeSession("s2", "IN_REVIEW", ISO_NOW),
+      makeSession("s3", "COMPLETED", ISO_NOW),
+    ]);
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId("sidebar-active-badge")).toHaveTextContent("2");
+    });
+  });
+
+  it("sidebar hides the active-session badge when there are no active sessions", async () => {
+    mockGet.mockResolvedValue([
+      makeSession("c1", "COMPLETED", ISO_3_DAYS_AGO),
+    ]);
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByTestId("dashboard-empty-state")).toBeInTheDocument()
+    );
+    expect(screen.queryByTestId("sidebar-active-badge")).not.toBeInTheDocument();
   });
 });
 

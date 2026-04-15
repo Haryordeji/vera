@@ -28,6 +28,14 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
+**Dashboard & Cross-Physician Visibility feature — FINALIZED** (`claude/dashboard-visibility-feat.md`):
+- ✅ `Sidebar` now fetches `/sessions?scope=mine` on mount and displays a small active-session badge on the Dashboard nav item when there are any non-`COMPLETED` sessions. Badge is omitted silently when count is 0 or the fetch fails.
+- ✅ Dashboard empty state rewritten: "All caught up! No sessions need your attention." with an inline Start New Visit button (`data-testid="dashboard-empty-cta"`). Replaces the older "No active sessions" copy.
+- ✅ Past Visits empty state rewritten: "No visits match your search." (heading) + "Try adjusting your search or filters." (subtext). The practice-wide archive is rarely truly empty, so the single copy covers both no-results-for-filter and no-data-at-all.
+- ✅ Patient Detail visit history was already cross-physician (backend query is by `patientId` only, includes `physician.fullName`, and each row navigates to `/visits/:id` which renders `ActiveVisitPage` with read-only mode for non-owners). Verified end-to-end; no code changes needed.
+- ✅ Navigation flow audited: Dashboard "View all past visits →" → `/visits`; `VisitCard` click → `/visits/:id`; `PatientVisitHistory` row click → `/visits/:id`. All non-owner destinations render the ownership banner + read-only UI.
+- ✅ Tests: `dashboard.test.tsx` updated for new empty copy + 2 new sidebar-badge cases (count reflects non-completed sessions, badge absent when none). `pastVisits.test.tsx` and `routing.test.tsx` assertions updated to the new empty-state copy. `dashboard.test.tsx` mocks switched from `mockResolvedValueOnce` → `mockResolvedValue` so both DashboardPage and Sidebar see the same fixture.
+
 **Read-only mode on Active Visit page (non-owner view) — COMPLETE** (`claude/dashboard-visibility-feat.md` §3):
 - ✅ New `GET /api/auth/me` endpoint + `useCurrentPhysician` hook resolve the logged-in physician's id for client-side ownership checks.
 - ✅ `ActiveVisitPage` derives `isOwner` optimistically (treats unresolved `/auth/me` as "owner" to avoid read-only flash for owners). When `knownNonOwner`, renders `OwnershipBanner` naming the owning physician and gates every write control.
@@ -41,7 +49,7 @@ All phases complete. The app is demo-ready.
 - ✅ Debounced (300ms) search input sends `?search=` to the backend; matches patient fullName or MRN.
 - ✅ Filter bar: new `PhysicianFilter` component (fetches `/api/physicians` on mount) sends `?physician=<id>`, and a status `<select>` covering every `SessionStatus` sends `?status=`. All filters combine in a single request with search.
 - ✅ `VisitCard` already renders the physician name, so each card shows patient + date + `Dr. <Physician>` + status badge.
-- ✅ Empty state is "No visits found" (same copy whether the list is empty because of filters or because nothing has been recorded).
+- ✅ Empty state is "No visits match your search." (same copy whether the list is empty because of filters or because nothing has been recorded — the page is always practice-wide).
 - ✅ Tests (`pastVisits.test.tsx`, 8): scope=all fetch, multi-physician render, debounced search, physician filter, status filter, empty state, PhysicianFilter fetch + onChange. `routing.test.tsx` updated to the new empty-state copy.
 
 **Dashboard redesign (active work queue) — COMPLETE** (`claude/dashboard-visibility-feat.md` §1):

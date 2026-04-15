@@ -1,5 +1,7 @@
 # Feature Spec: Dashboard Redesign & Cross-Physician Visibility
 
+## Status: Completed
+
 ## Overview
 
 Two related changes that improve how Vera handles multi-physician workflows:

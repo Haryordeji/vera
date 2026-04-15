@@ -254,7 +254,7 @@ describe("PastVisitsPage", () => {
     });
   });
 
-  it("shows 'No visits found' empty state when the API returns no results", async () => {
+  it("shows 'No visits match your search.' empty state when the API returns no results", async () => {
     mockGet.mockImplementation((path: string) => {
       if (path === "/physicians") return Promise.resolve(PHYSICIANS);
       return Promise.resolve([]);
@@ -265,7 +265,7 @@ describe("PastVisitsPage", () => {
     await waitFor(() =>
       expect(screen.getByTestId("past-visits-empty")).toBeInTheDocument()
     );
-    expect(screen.getByText("No visits found")).toBeInTheDocument();
+    expect(screen.getByText("No visits match your search.")).toBeInTheDocument();
   });
 });
 

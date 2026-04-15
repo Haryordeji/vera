@@ -133,16 +133,18 @@ export default function DashboardPage() {
               data-testid="dashboard-empty-state"
               className="bg-slate-50 border border-dashed border-slate-200 rounded-lg px-6 py-10 text-center"
             >
-              <p className="text-sm text-slate-600">
-                No active sessions. Start a new visit or{" "}
-                <button
-                  onClick={() => navigate("/visits")}
-                  className="text-blue-600 hover:text-blue-800 font-medium"
-                >
-                  view past visits
-                </button>
-                .
+              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+              <p className="text-sm font-medium text-slate-700">
+                All caught up! No sessions need your attention.
               </p>
+              <button
+                onClick={() => navigate("/visits/new")}
+                data-testid="dashboard-empty-cta"
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Start New Visit
+              </button>
             </div>
           ) : (
             <div data-testid="active-sessions-list" className="space-y-2">

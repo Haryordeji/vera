@@ -2,6 +2,55 @@
 
 ---
 
+## 2026-04-15
+### Entry #22 — Dashboard & Cross-Physician Visibility: Final Polish
+
+Wraps up `claude/dashboard-visibility-feat.md`. The four core slices (Entries #18 backend, #19 dashboard, #20 past visits, #21 read-only) shipped last week. This entry is the finalization pass: empty-state copy, a sidebar count badge, and an end-to-end audit of the cross-physician flow.
+
+**Patient Detail visit history — verified (no code changes):**
+- Backend `GET /api/patients/:id` (`routes/patients.ts:80-110`) already queries sessions by `patientId` only, with no physician filter, and `include`s `physician: { select: { fullName: true } }`. So a brand-new physician opening a patient page sees every visit for that patient regardless of who conducted it.
+- `PatientVisitHistory` already renders `Dr. {v.physician.fullName}` per row and navigates to `/visits/${v.id}`.
+- `/visits/:id` → `ActiveVisitPage`, which (after Entry #21) derives `isOwner` from `/auth/me` vs `session.physicianId` and flips into full read-only mode with the ownership banner for non-owners. End-to-end cross-physician view path works without any additional wiring.
+
+**Sidebar active-session badge:**
+- `Sidebar` gained a `useEffect` that fetches `/sessions?scope=mine` on mount, counts non-`COMPLETED` sessions, and stores the count in local state. A small pill badge (`data-testid="sidebar-active-badge"`, blue background, white text) renders inside the Dashboard `NavLink` when `activeCount > 0`. Failure/loading cases silently render no badge — this is a peripheral signal, not a blocker.
+- Array-ness is defensively guarded so tests that mock non-array responses don't crash the sidebar on mount.
+- Trade-off: the sidebar now makes its own `/sessions?scope=mine` request in addition to the Dashboard's. This is a ~1KB duplicate request on Dashboard views but keeps the sidebar self-contained on every other page (Patients, Past Visits, Settings) where the Dashboard component isn't mounted. Not wiring it through a shared context for a single badge.
+
+**Empty state copy rewrites:**
+- `DashboardPage`: replaced "No active sessions. Start a new visit or view past visits." with the warmer "All caught up! No sessions need your attention." + a green check icon + a proper Start New Visit button (`dashboard-empty-cta`) instead of the inline text link. The "View all past visits →" link at the bottom of the page remains.
+- `PastVisitsPage`: replaced the heading "No visits found" with "No visits match your search." The supporting subtext ("Try adjusting your search or filters.") is unchanged. This is a single copy for both "filters excluded everything" and "nothing in the database yet" — the page is always practice-wide, so the brand-new-practice case is just as much about filters as any other zero-result state.
+
+**Test updates:**
+- `dashboard.test.tsx`:
+  - Swapped every `mockGet.mockResolvedValueOnce(...)` to `mockResolvedValue(...)` so both `DashboardPage` and the new `Sidebar` fetch resolve against the same fixture (children useEffects fire before parents, so the Sidebar would otherwise steal the one-shot mock).
+  - Empty-state test now asserts the new copy and the `dashboard-empty-cta` button.
+  - Two new tests: sidebar badge shows the correct count with mixed statuses (2 non-completed of 3); badge is absent when only completed sessions exist.
+- `pastVisits.test.tsx`: empty-state assertion and test name updated to "No visits match your search."
+- `routing.test.tsx`: empty-state assertion updated to the same copy.
+- Existing `ownership.test.tsx` and `patientDetail.test.tsx` unaffected — their mocks handle the new `/sessions?scope=mine` fallthrough safely (null/non-array → defensive empty count).
+
+**Navigation flow audit — confirmed:**
+- Dashboard "View all past visits →" → `/visits` ✅
+- `VisitCard` click → `/visits/:id` ✅ (Dashboard + Past Visits)
+- `PatientVisitHistory` row click → `/visits/:id` ✅
+- All three paths land on `ActiveVisitPage`, which renders read-only + banner when the viewer isn't the owner.
+
+**Manual verification (two-physician scenario) — left to the user per `DO NOT RUN npx vitest run` standing instruction.** The intended flow: Physician A records + approves a session for a patient; Physician B signs in, sees A's visit on `/visits`, opens it and confirms the ownership banner + read-only SOAP/vitals/audio, opens the same patient from `/patients`, confirms the visit is listed under Dr. A in the history, clicks it, confirms the same read-only behavior, then starts their own visit on the same patient and confirms full edit access on that session. Dashboard shows only B's own active sessions; sidebar badge reflects B's own non-completed count only.
+
+**Files touched this entry:**
+- `packages/web/src/components/layout/Sidebar.tsx` (+ active-count fetch + badge)
+- `packages/web/src/pages/DashboardPage.tsx` (empty state rewrite)
+- `packages/web/src/pages/PastVisitsPage.tsx` (empty-state heading)
+- `packages/web/src/__tests__/dashboard.test.tsx` (copy + sidebar-badge tests + mock pattern swap)
+- `packages/web/src/__tests__/pastVisits.test.tsx` (empty copy)
+- `packages/web/src/__tests__/routing.test.tsx` (empty copy)
+- `CLAUDE.md` (new "FINALIZED" section + Past Visits empty-state note updated)
+
+Feature `claude/dashboard-visibility-feat.md` is now fully shipped.
+
+---
+
 ## 2026-04-14
 ### Entry #21 — Read-Only Mode on Active Visit Page (Non-Owner View)
 

@@ -117,7 +117,7 @@ export default function PastVisitsPage() {
           >
             <Clock className="w-10 h-10 text-slate-300 mx-auto mb-3" />
             <h3 className="text-base font-medium text-slate-700 mb-1">
-              No visits found
+              No visits match your search.
             </h3>
             <p className="text-sm text-slate-400">
               Try adjusting your search or filters.

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { UserButton } from "@clerk/clerk-react";
 import {
@@ -9,16 +10,36 @@ import {
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useApi } from "@/lib/api";
+import type { Session } from "@/lib/types";
 
 const NAV_ITEMS = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/patients", label: "Patients", icon: Users, end: false },
-  { to: "/visits", label: "Past Visits", icon: Clock, end: false },
-  { to: "/settings", label: "Settings", icon: Settings, end: false },
-];
+  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, key: "dashboard" },
+  { to: "/patients", label: "Patients", icon: Users, end: false, key: "patients" },
+  { to: "/visits", label: "Past Visits", icon: Clock, end: false, key: "visits" },
+  { to: "/settings", label: "Settings", icon: Settings, end: false, key: "settings" },
+] as const;
 
 export function Sidebar() {
   const navigate = useNavigate();
+  const { get } = useApi();
+  const [activeCount, setActiveCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    get<Session[]>("/sessions?scope=mine")
+      .then((sessions) => {
+        if (cancelled) return;
+        const list = Array.isArray(sessions) ? sessions : [];
+        setActiveCount(list.filter((s) => s.status !== "COMPLETED").length);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveCount(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [get]);
 
   return (
     <aside className="flex flex-col w-60 shrink-0 h-full bg-white border-r border-slate-200">
@@ -37,24 +58,36 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-blue-50 text-blue-700"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-              )
-            }
-          >
-            <Icon className="w-4 h-4 shrink-0" />
-            {label}
-          </NavLink>
-        ))}
+        {NAV_ITEMS.map(({ to, label, icon: Icon, end, key }) => {
+          const showBadge =
+            key === "dashboard" && activeCount !== null && activeCount > 0;
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                  isActive
+                    ? "bg-blue-50 text-blue-700"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                )
+              }
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              <span className="flex-1">{label}</span>
+              {showBadge && (
+                <span
+                  data-testid="sidebar-active-badge"
+                  className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-blue-600 text-white text-[11px] font-semibold leading-none"
+                >
+                  {activeCount}
+                </span>
+              )}
+            </NavLink>
+          );
+        })}
       </nav>
 
       {/* Bottom actions */}
