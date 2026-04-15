@@ -28,6 +28,15 @@ Phase 11: Polish & Demo Prep — COMPLETE
 ## Project Status
 All phases complete. The app is demo-ready.
 
+**UX Fixes (Issue 2) — Archive pattern (backend) — COMPLETE** (`claude/ux-fixes-1-spec.md` §2):
+- ✅ Schema: `Patient.archivedAt DateTime?` + `Session.archivedAt DateTime?`. Migration `20260415042817_add_archive_fields` applied.
+- ✅ `GET /api/patients` defaults to `where: { archivedAt: null }`; `?includeArchived=true` skips the filter. Composes with `?search=`.
+- ✅ `GET /api/sessions` (both `scope=mine` and `scope=all`) defaults to `where: { archivedAt: null }`; `?includeArchived=true` skips the filter. Composes with `status`, `physician`, `search`.
+- ✅ `GET /api/patients/:id` — the patient record itself is still returned even when archived (you need to view it to unarchive it). The nested `sessions` list defaults to excluding archived rows; pass `?includeArchived=true` to include them.
+- ✅ `POST /api/patients/:id/archive` / `/unarchive` — set or clear `archivedAt`; 404 on unknown id. No ownership check (patients are practice-wide records, not owned by a physician).
+- ✅ `POST /api/sessions/:id/archive` / `/unarchive` — owner-only via `requireSessionOwner` (403 for non-owner, 404 for unknown). Wraps the update + audit event in a `prisma.$transaction`. Emits `SESSION_ARCHIVED` ("Visit archived by Dr. …") or `SESSION_UNARCHIVED` ("Visit restored by Dr. …") audit events. Returns the updated session with `patient` and `physician` included.
+- ✅ Tests (`archive.test.ts`, 15): patient list excludes/includes archived by default/`includeArchived`; archive+unarchive patient flow hides/restores from list; archive returns 404 for unknown; archived patient still fetchable via detail; session list (scope=mine and scope=all) excludes/includes archived; session archive/unarchive returns 403 for non-owner; returns 404 for unknown; owner archive+unarchive flow sets/clears `archivedAt`, creates the correct audit event, hides/restores from default list; patient detail nested sessions respect archive filter.
+
 **UX Fixes (Issue 1) — PageHeader back navigation — COMPLETE** (`claude/ux-fixes-1-spec.md` §1):
 - ✅ New `components/layout/PageHeader.tsx`: props `title`, optional `backTo` (path or `"history"`), optional `backLabel`, optional `children` (right-side action slot). Renders a left-arrow back button above the title when `backTo` is set; `"history"` calls `navigate(-1)`, otherwise `navigate(backTo)`. `data-testid="page-header"` + `"page-header-back"`.
 - ✅ `PatientDetailPage` — `backTo="/patients"`, label "Back to Patients". Replaces the old inline `Link` + `ArrowLeft` block.

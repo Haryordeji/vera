@@ -49,20 +49,31 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-/** GET /api/patients — list patients with counts; optional ?search= by name or MRN */
+/**
+ * GET /api/patients — list patients with counts.
+ *
+ * Query params:
+ *   search=<text>          → filter by fullName or MRN (case-insensitive)
+ *   includeArchived=true   → include archived patients (default excludes them)
+ */
 router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const search = (req.query.search as string | undefined)?.trim();
+    const includeArchived = req.query.includeArchived === "true";
+
+    const where: Record<string, unknown> = {};
+    if (!includeArchived) {
+      where.archivedAt = null;
+    }
+    if (search) {
+      where.OR = [
+        { fullName: { contains: search, mode: "insensitive" } },
+        { mrn: { contains: search, mode: "insensitive" } },
+      ];
+    }
 
     const patients = await prisma.patient.findMany({
-      where: search
-        ? {
-            OR: [
-              { fullName: { contains: search, mode: "insensitive" } },
-              { mrn: { contains: search, mode: "insensitive" } },
-            ],
-          }
-        : undefined,
+      where,
       orderBy: { fullName: "asc" },
       include: {
         _count: {
@@ -77,20 +88,29 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-/** GET /api/patients/:id — patient detail with allergies, medications, and sessions */
+/**
+ * GET /api/patients/:id — patient detail with allergies, medications, and sessions.
+ *
+ * The patient itself is returned even if archived (you need to view it to unarchive it).
+ * Nested sessions default to excluding archived; pass ?includeArchived=true to include them.
+ */
 router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const includeArchived = req.query.includeArchived === "true";
+
     const patient = await prisma.patient.findUnique({
       where: { id: req.params.id },
       include: {
         allergies: { orderBy: { createdAt: "asc" } },
         medications: { orderBy: { createdAt: "asc" } },
         sessions: {
+          where: includeArchived ? undefined : { archivedAt: null },
           orderBy: { recordedAt: "desc" },
           select: {
             id: true,
             status: true,
             recordedAt: true,
+            archivedAt: true,
             physician: { select: { fullName: true } },
             soapNote: { select: { workflowStatus: true } },
           },
@@ -136,6 +156,50 @@ router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
     const patient = await prisma.patient.update({
       where: { id: req.params.id },
       data,
+    });
+
+    res.json(patient);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Archive / unarchive
+// ---------------------------------------------------------------------------
+
+/** POST /api/patients/:id/archive — soft-delete (hide from default lists) */
+router.post("/:id/archive", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const existing = await prisma.patient.findUnique({ where: { id: req.params.id } });
+    if (!existing) {
+      res.status(404).json({ error: "Patient not found" });
+      return;
+    }
+
+    const patient = await prisma.patient.update({
+      where: { id: req.params.id },
+      data: { archivedAt: new Date() },
+    });
+
+    res.json(patient);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /api/patients/:id/unarchive — restore */
+router.post("/:id/unarchive", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const existing = await prisma.patient.findUnique({ where: { id: req.params.id } });
+    if (!existing) {
+      res.status(404).json({ error: "Patient not found" });
+      return;
+    }
+
+    const patient = await prisma.patient.update({
+      where: { id: req.params.id },
+      data: { archivedAt: null },
     });
 
     res.json(patient);

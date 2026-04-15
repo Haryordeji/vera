@@ -84,6 +84,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
  *   physician=<id>       → when scope=all, filter to a specific physician
  *   search=<text>        → filter by patient fullName or mrn (case-insensitive)
  *   status=<SessionStatus> → filter by status
+ *   includeArchived=true → include archived sessions (default excludes them)
  */
 router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -117,6 +118,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     const physicianFilter = req.query.physician as string | undefined;
     const searchRaw = req.query.search as string | undefined;
     const search = searchRaw?.trim();
+    const includeArchived = req.query.includeArchived === "true";
 
     const where: Record<string, unknown> = {};
 
@@ -137,6 +139,10 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
           { mrn: { contains: search, mode: "insensitive" } },
         ],
       };
+    }
+
+    if (!includeArchived) {
+      where.archivedAt = null;
     }
 
     const sessions = await prisma.session.findMany({
@@ -697,6 +703,98 @@ router.post("/:id/soap-note/approve", async (req: Request, res: Response, next: 
     });
 
     res.json(updatedNote);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /api/sessions/:id/archive — soft-delete (owner-only, audit event) */
+router.post("/:id/archive", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+
+    const physician = await getPhysician(userId);
+    if (!physician) {
+      res.status(400).json({ error: "Physician profile not found." });
+      return;
+    }
+
+    const ownership = await requireSessionOwner(req.params.id, physician.id);
+    if (!ownership.ok) {
+      res.status(ownership.status).json({ error: ownership.error });
+      return;
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const s = await tx.session.update({
+        where: { id: ownership.session.id },
+        data: { archivedAt: new Date() },
+        include: { patient: true, physician: true },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          sessionId: ownership.session.id,
+          eventType: "SESSION_ARCHIVED",
+          description: `Visit archived by ${physician.fullName}`,
+          author: physician.fullName,
+        },
+      });
+
+      return s;
+    });
+
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** POST /api/sessions/:id/unarchive — restore (owner-only, audit event) */
+router.post("/:id/unarchive", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+
+    const physician = await getPhysician(userId);
+    if (!physician) {
+      res.status(400).json({ error: "Physician profile not found." });
+      return;
+    }
+
+    const ownership = await requireSessionOwner(req.params.id, physician.id);
+    if (!ownership.ok) {
+      res.status(ownership.status).json({ error: ownership.error });
+      return;
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const s = await tx.session.update({
+        where: { id: ownership.session.id },
+        data: { archivedAt: null },
+        include: { patient: true, physician: true },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          sessionId: ownership.session.id,
+          eventType: "SESSION_UNARCHIVED",
+          description: `Visit restored by ${physician.fullName}`,
+          author: physician.fullName,
+        },
+      });
+
+      return s;
+    });
+
+    res.json(updated);
   } catch (err) {
     next(err);
   }

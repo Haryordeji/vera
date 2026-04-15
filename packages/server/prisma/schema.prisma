@@ -30,6 +30,7 @@ model Patient {
   heightCm    Float?
   eyeColor    String?
   bloodType   String?
+  archivedAt  DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -67,6 +68,7 @@ model Session {
   status       SessionStatus @default(RECORDING)
   recordedAt   DateTime      @default(now())
   audioFileUrl String?
+  archivedAt   DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 

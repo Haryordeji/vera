@@ -3,6 +3,53 @@
 ---
 
 ## 2026-04-15
+### Entry #24 — UX Fixes (Issue 2): Archive Pattern (Backend)
+
+Second slice of `claude/ux-fixes-1-spec.md`. Implements the soft-delete/archive pattern for patients and sessions. Backend only — schema, endpoints, tests. Frontend controls (confirmation dialogs, archived-view toggles) are a separate slice.
+
+**Schema + migration:**
+- `Patient.archivedAt DateTime?` and `Session.archivedAt DateTime?` — nullable, `null` means active.
+- `npx prisma migrate dev --name add-archive-fields` → new migration `20260415042817_add_archive_fields`. Prisma client regenerated (`src/generated/prisma`).
+
+**List-endpoint archive filtering:**
+- `GET /api/patients` — defaults to `where: { archivedAt: null }`. `?includeArchived=true` drops the filter. The search filter (`?search=…`) now composes with the archive filter via a shared `where` object rather than the old ternary.
+- `GET /api/sessions` — same treatment, on both `scope=mine` and `scope=all`. `?includeArchived=true` works in combination with every other query param (`status`, `physician`, `search`).
+- `GET /api/patients/:id` — patient record itself is still returned regardless of archive state (needed so the unarchive UI has something to render). The nested `sessions` include now carries a `where: { archivedAt: null }` by default. `?includeArchived=true` on this endpoint flips to no filter on the nested sessions.
+- `sessions` selection on the patient detail endpoint also now includes `archivedAt: true` so the frontend can show a muted row for archived visits once the UI slice lands.
+
+**Archive/unarchive endpoints:**
+- `POST /api/patients/:id/archive` / `/unarchive` — 404 if the patient doesn't exist; otherwise updates `archivedAt` (to `new Date()` or `null`) and returns the updated row. No ownership check: patients aren't owned by a physician in this model and any clinician in the practice might reasonably archive one. Matches the spec's "Archive Patient" dropdown option on the patient detail page.
+- `POST /api/sessions/:id/archive` / `/unarchive` — standard auth + `getPhysician` + `requireSessionOwner` preamble (auth, 400 if no physician profile, 404 for unknown session, 403 for non-owner — spec explicitly requires owner-only). The update + audit event are wrapped in `prisma.$transaction` to mirror the rest of the session write endpoints. Audit event types:
+  - `SESSION_ARCHIVED`, description `"Visit archived by Dr. <name>"`
+  - `SESSION_UNARCHIVED`, description `"Visit restored by Dr. <name>"`
+- Returns the updated session with `patient` + `physician` included, same shape as the other session-mutation responses.
+
+**Tests — `archive.test.ts` (15 cases):**
+- Seeds two physicians (`OWNER`, `OTHER`), two patients (one active, one seeded archived), and four sessions: an active owner session, a pre-archived owner session, an owner session used to exercise the archive/unarchive round trip, and a non-owner session used as a 403 probe. Each test file uses `Date.now()`-suffixed clerk ids / MRNs to avoid collisions with other server test files that share the same database.
+- Clerk auth is mocked the same way as the other server tests: a `requireAuth` that reads `x-test-clerk-user-id`, and a `getAuth` that returns `req.__clerkAuth`.
+- Cases:
+  - `GET /api/patients` excludes archived by default; returns them with `?includeArchived=true`; search composes with both.
+  - `POST /api/patients/:id/archive` sets `archivedAt` and hides from the default list; `/unarchive` clears it and restores. Unknown id returns 404. `GET /api/patients/:id` still returns an archived patient.
+  - `GET /api/sessions` excludes archived by default on both `scope=mine` and `scope=all`; `?includeArchived=true` brings them back on both scopes.
+  - `POST /api/sessions/:id/archive` and `/unarchive` both return 403 when a non-owner calls them; 404 for unknown ids.
+  - Owner archive flow: sets `archivedAt`, creates exactly one `SESSION_ARCHIVED` audit event authored by the owner's `fullName`, and the session disappears from the default list.
+  - Owner unarchive flow: clears `archivedAt`, creates exactly one `SESSION_UNARCHIVED` audit event authored by the owner's `fullName`, and the session reappears in the default list.
+  - Patient detail nested sessions: default excludes the pre-archived session; `?includeArchived=true` includes it.
+- `afterAll` cleans up in dependency order (audit events → sessions → patients → physicians).
+
+**Files touched:**
+- `packages/server/prisma/schema.prisma` (+ `archivedAt` on Patient and Session)
+- `packages/server/prisma/migrations/20260415042817_add_archive_fields/` (new)
+- `packages/server/src/routes/patients.ts` (list filter, detail filter, archive + unarchive)
+- `packages/server/src/routes/sessions.ts` (list filter, archive + unarchive)
+- `packages/server/src/__tests__/archive.test.ts` (new, 15 cases)
+- `CLAUDE.md`
+
+Server typecheck passes (`npx tsc --noEmit` clean). Test suite run skipped per standing instruction — I did not run `npx vitest run`; the user will run these manually.
+
+---
+
+## 2026-04-15
 ### Entry #23 — UX Fixes (Issue 1): PageHeader Back Navigation
 
 First slice of `claude/ux-fixes-1-spec.md`. Adds a contextual back button to every detail page via a shared `PageHeader` component, so drilling into a visit or patient no longer leaves you reaching for the browser back button.
