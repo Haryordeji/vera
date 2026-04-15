@@ -102,7 +102,10 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
         physicianId: physician.id,
         ...(statusFilter ? { status: statusFilter as SessionStatus } : {}),
       },
-      include: { patient: true },
+      include: {
+        patient: true,
+        physician: { select: { fullName: true } },
+      },
       orderBy: { recordedAt: "desc" },
     });
 
@@ -134,6 +137,7 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
         physician: true,
         transcript: true,
         soapNote: { include: { approvedBy: true } },
+        vitals: true,
         auditEvents: { orderBy: { createdAt: "asc" } },
       },
     });

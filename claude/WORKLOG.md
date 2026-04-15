@@ -3,6 +3,41 @@
 ---
 
 ## 2026-04-14
+### Entry #13 — Enhanced Patient Management: API Endpoints
+
+Phase 2 of the feature — API layer. Added allergy, medication, and vitals endpoints; expanded the existing patient/session routes to include new fields and nested data. 129 server tests passing (24 new).
+
+**New routes (`packages/server/src/routes/patients.ts`):**
+- `POST /api/patients/:id/allergies` — body `{ name (required), severity?, reaction? }`, returns 201 + allergy. 404 if patient missing, 400 if name missing.
+- `DELETE /api/patients/:id/allergies/:allergyId` — 204 on success; 404 if allergy doesn't belong to the specified patient.
+- `POST /api/patients/:id/medications` — body `{ name (required), dosage?, frequency? }`.
+- `PUT /api/patients/:id/medications/:medicationId` — partial update of name/dosage/frequency. 404 if not owned by patient.
+- `DELETE /api/patients/:id/medications/:medicationId` — 204 on success.
+
+**New file (`packages/server/src/routes/vitals.ts`):**
+- `POST /api/sessions/:id/vitals` — accepts partial vitals, verifies session ownership via Clerk physician lookup, 409 if vitals already exist, creates a `VITALS_RECORDED` audit event (inside a transaction).
+- `PUT /api/sessions/:id/vitals` — partial update; 404 when vitals don't yet exist.
+- Router mounted in `src/index.ts` with `mergeParams: true` at `/api/sessions/:id/vitals` (before the sessions router).
+
+**Updated routes:**
+- `POST /api/patients` + `PUT /api/patients/:id` — now accept `sex`, `heightCm`, `eyeColor`, `bloodType`. Strings trimmed; empty string → null.
+- `GET /api/patients` — each patient includes `_count: { allergies, medications, sessions }`.
+- `GET /api/patients/:id` — includes `allergies` (asc by createdAt), `medications` (asc), and `sessions` (desc by recordedAt) where each session carries `{ id, status, recordedAt, physician: { fullName }, soapNote: { workflowStatus } }`.
+- `GET /api/sessions/:id` — added `vitals` to the includes (physician was already included).
+- `GET /api/sessions` — now selects `physician: { fullName }` alongside patient.
+
+**Tests (`packages/server/src/__tests__/patientProfileApi.test.ts`):** 24 tests covering allergy/medication CRUD (happy path + 400/404 cross-patient protection), vitals POST/PUT (happy path, 409 conflict, 404 unknown session, 403 other-physician, PUT-before-POST 404), VITALS_RECORDED audit event, patient create/update with new profile fields, patient list `_count`, patient detail nested data with physician name, session detail vitals include, session list physician include.
+
+**Key files:**
+- `packages/server/src/routes/patients.ts`
+- `packages/server/src/routes/vitals.ts`
+- `packages/server/src/routes/sessions.ts`
+- `packages/server/src/index.ts`
+- `packages/server/src/__tests__/patientProfileApi.test.ts`
+
+---
+
+## 2026-04-14
 ### Entry #12 — Enhanced Patient Management: Schema + Seed + Tests
 
 Phase 1 of the Enhanced Patient Management feature — database layer only. Expanded the `Patient` model with profile fields and added `Allergy`, `Medication`, and `Vitals` models. 112 server tests passing (105 shown, 7 new).

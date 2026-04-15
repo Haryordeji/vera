@@ -5,6 +5,7 @@ import { clerkInit, requireAuthMiddleware } from "./middleware/auth";
 import authRouter from "./routes/auth";
 import patientsRouter from "./routes/patients";
 import sessionsRouter from "./routes/sessions";
+import vitalsRouter from "./routes/vitals";
 
 export const app = express();
 
@@ -25,6 +26,7 @@ app.use(requireAuthMiddleware);
 // Routes
 app.use("/api/auth", authRouter);
 app.use("/api/patients", patientsRouter);
+app.use("/api/sessions/:id/vitals", vitalsRouter);
 app.use("/api/sessions", sessionsRouter);
 
 // 404 handler
